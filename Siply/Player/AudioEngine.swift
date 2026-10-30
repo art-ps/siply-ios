@@ -4,6 +4,8 @@ import AVFoundation
 @MainActor
 protocol AudioEngine: AnyObject {
     var volume: Float { get set }
+    /// Скорость воспроизведения, 1 — обычная.
+    var rate: Float { get set }
     /// Чтение — позиция, запись — перемотка.
     var currentTime: TimeInterval { get set }
     var duration: TimeInterval { get }
@@ -22,6 +24,10 @@ final class AVAudioPlayerEngine: NSObject, AudioEngine, AVAudioPlayerDelegate {
         didSet { player?.volume = volume }
     }
 
+    var rate: Float = 1 {
+        didSet { player?.rate = rate }
+    }
+
     var currentTime: TimeInterval {
         get { player?.currentTime ?? 0 }
         set { player?.currentTime = newValue }
@@ -37,6 +43,9 @@ final class AVAudioPlayerEngine: NSObject, AudioEngine, AVAudioPlayerDelegate {
         let p = try AVAudioPlayer(contentsOf: url)
         p.delegate = self
         p.volume = volume
+        // enableRate надо включить до prepareToPlay, иначе rate игнорируется.
+        p.enableRate = true
+        p.rate = rate
         p.prepareToPlay()
         player = p
     }

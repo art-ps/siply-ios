@@ -6,6 +6,7 @@ final class FakeAudioEngine: AudioEngine {
     struct LoadError: Error {}
 
     var volume: Float = 1
+    var rate: Float = 1
     var currentTime: TimeInterval = 0
     var duration: TimeInterval = 100
     var onFinished: (@MainActor () -> Void)?

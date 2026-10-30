@@ -67,7 +67,7 @@ final class NowPlaying {
             MPMediaItemPropertyAlbumTitle: track.album,
             MPMediaItemPropertyPlaybackDuration: player.duration,
             MPNowPlayingInfoPropertyElapsedPlaybackTime: player.currentTime,
-            MPNowPlayingInfoPropertyPlaybackRate: player.isPlaying ? 1.0 : 0.0,
+            MPNowPlayingInfoPropertyPlaybackRate: player.isPlaying ? Double(player.rate) : 0.0,
         ]
         if let art = artwork(for: track) { info[MPMediaItemPropertyArtwork] = art }
         center.nowPlayingInfo = info

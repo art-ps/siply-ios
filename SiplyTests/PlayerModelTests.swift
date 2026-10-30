@@ -337,4 +337,22 @@ final class PlayerModelTests: XCTestCase {
         XCTAssertEqual(engine.loaded, [tracks[0].url, tracks[2].url])
         XCTAssertTrue(player.isPlaying)
     }
+
+    func testRateDefaultsToOneAndCycles() {
+        XCTAssertEqual(player.rate, 1)
+        var seen: [Float] = []
+        for _ in 0..<5 { player.cycleRate(); seen.append(player.rate) }
+        XCTAssertEqual(seen, [1.25, 1.5, 2, 0.75, 1])
+        XCTAssertEqual(engine.rate, 1)
+        XCTAssertEqual(defaults.float(forKey: "rate"), 1)
+    }
+
+    func testRatePersistsAndAppliesToEngine() {
+        player.cycleRate()   // 1.25
+        XCTAssertEqual(engine.rate, 1.25)
+        let engine2 = FakeAudioEngine()
+        let player2 = PlayerModel(engine: engine2, downloader: downloader, defaults: defaults)
+        XCTAssertEqual(player2.rate, 1.25)
+        XCTAssertEqual(engine2.rate, 1.25)
+    }
 }

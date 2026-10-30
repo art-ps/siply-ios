@@ -23,6 +23,8 @@ final class PlayerModel {
     var volume: Float {
         didSet { engine.volume = volume; defaults.set(volume, forKey: Keys.volume) }
     }
+    /// Скорость одна на всё приложение.
+    private(set) var rate: Float
     var shuffle: Bool {
         didSet { rebuildOrder(); defaults.set(shuffle, forKey: Keys.shuffle) }
     }
@@ -45,6 +47,7 @@ final class PlayerModel {
 
     private enum Keys {
         static let volume = "volume"
+        static let rate = "rate"
         static let shuffle = "shuffle"
         static let repeatMode = "repeatMode"
     }
@@ -54,13 +57,24 @@ final class PlayerModel {
         self.downloader = downloader
         self.defaults = defaults
         volume = defaults.object(forKey: Keys.volume) as? Float ?? 1
+        rate = defaults.object(forKey: Keys.rate) as? Float ?? 1
         shuffle = defaults.bool(forKey: Keys.shuffle)
         repeatMode = RepeatMode(rawValue: defaults.string(forKey: Keys.repeatMode) ?? "") ?? .off
         engine.volume = volume
+        engine.rate = rate
         engine.onFinished = { [weak self] in self?.trackFinished() }
     }
 
     // MARK: - Управление
+
+    private static let rates: [Float] = [1, 1.25, 1.5, 2, 0.75]
+
+    func cycleRate() {
+        let next = Self.rates.firstIndex(of: rate).map { Self.rates[($0 + 1) % Self.rates.count] } ?? Self.rates[0]
+        rate = next
+        engine.rate = next
+        defaults.set(next, forKey: Keys.rate)
+    }
 
     func play(queue: [Track], startingAt index: Int) {
         guard queue.indices.contains(index) else { return }

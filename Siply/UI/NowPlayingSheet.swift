@@ -48,7 +48,14 @@ struct NowPlayingSheet: View {
             }
             .buttonStyle(.plain)
             HStack {
+                Button(rateLabel) { player.cycleRate() }
+                    .buttonStyle(.bordered)
+                    .font(.callout.monospacedDigit())
+                    .accessibilityLabel("Скорость")
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 RoutePicker().frame(width: 44, height: 44)
+                // Справа — место под таймер сна.
+                Color.clear.frame(maxWidth: .infinity)
             }
         }
         .padding(.horizontal, 32)
@@ -58,5 +65,14 @@ struct NowPlayingSheet: View {
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+    }
+
+    /// «1,25×»: запятая по-русски, без хвостовых нулей.
+    private var rateLabel: String {
+        let f = NumberFormatter()
+        f.locale = Locale(identifier: "ru_RU")
+        f.minimumFractionDigits = 0
+        f.maximumFractionDigits = 2
+        return (f.string(from: NSNumber(value: player.rate)) ?? "1") + "×"
     }
 }
