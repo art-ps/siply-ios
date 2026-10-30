@@ -12,6 +12,7 @@ struct FolderView: View {
     @State private var artwork: Data?
     @State private var loaded = false
     @State private var downloadError: String?
+    @State private var inFlight: Set<URL> = []   // качаются по тапу: перечитывание папки не должно сбросить строку
 
     init(folder: URL, source: Source) {
         self.folder = folder
@@ -80,7 +81,11 @@ struct FolderView: View {
                 return t
             })
         })
-        tracks = await LibraryScanner.tracks(in: folder, tagsOnDemand: source.tagsOnDemand(for: folder))
+        var loadedTracks = await LibraryScanner.tracks(in: folder, tagsOnDemand: source.tagsOnDemand(for: folder))
+        for i in loadedTracks.indices where inFlight.contains(loadedTracks[i].url) {
+            loadedTracks[i].download = .downloading
+        }
+        tracks = loadedTracks
         artwork = LibraryScanner.folderArtwork(for: folder, tracks: tracks)
         loaded = true
     }
@@ -104,9 +109,11 @@ struct FolderView: View {
             break
         case .remote:
             tracks[i].download = .downloading
+            inFlight.insert(url)
             Task {
                 do {
                     try await FileDownloader().download(url)
+                    inFlight.remove(url)
                     var t = await LibraryScanner.loadTrack(url)
                     t.download = .local
                     // Пока качали, список мог перечитаться — ищем по url, не по индексу
@@ -115,6 +122,7 @@ struct FolderView: View {
                     player.markDownloaded(url)
                     player.play(queue: tracks, startingAt: j)
                 } catch {
+                    inFlight.remove(url)
                     if let j = tracks.firstIndex(where: { $0.url == url }) { tracks[j].download = .remote }
                     downloadError = url.lastPathComponent
                 }
