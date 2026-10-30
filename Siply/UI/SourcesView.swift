@@ -6,6 +6,8 @@ struct SourcesView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var path: [FolderRoute] = []
     @State private var showPicker = false
+    @State private var renaming: Source?
+    @State private var newName = ""
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -13,6 +15,11 @@ struct SourcesView: View {
                 let _ = store.revision   // перерисовка после refresh(): доступность читается с диска
                 ForEach(store.sources) { source in
                     row(for: source)
+                        .contextMenu {
+                            if source.kind != .appFolder {
+                                Button("Переименовать", systemImage: "pencil") { newName = source.name; renaming = source }
+                            }
+                        }
                         .deleteDisabled(source.kind == .appFolder)
                 }
                 .onDelete { offsets in
@@ -21,6 +28,12 @@ struct SourcesView: View {
                 }
             }
             .navigationTitle("Источники")
+            .alert("Переименовать", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } }),
+                   presenting: renaming) { source in
+                TextField("Название", text: $newName)
+                Button("Сохранить") { store.rename(source, to: newName) }
+                Button("Отмена", role: .cancel) {}
+            }
             .refreshable { store.refresh() }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { store.refresh() }

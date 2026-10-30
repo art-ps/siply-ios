@@ -93,4 +93,25 @@ final class SourceStoreTests: XCTestCase {
         XCTAssertTrue(store.isAvailable(store.sources[1]))
         XCTAssertEqual(store.revision, revision + 1)
     }
+
+    func testRenameTrimsAndPersists() {
+        let store = makeStore()
+        store.add(folder: tmp.dir("Music"))
+        store.rename(store.sources[1], to: "  Книги ")
+        XCTAssertEqual(store.sources[1].name, "Книги")
+        XCTAssertEqual(makeStore().sources[1].name, "Книги")
+    }
+
+    func testRenameToBlankIsNoop() {
+        let store = makeStore()
+        store.add(folder: tmp.dir("Music"))
+        store.rename(store.sources[1], to: "   ")
+        XCTAssertEqual(store.sources[1].name, "Music")
+    }
+
+    func testUUIDNamedFolderIsCalledPapka() {
+        let store = makeStore()
+        store.add(folder: tmp.dir(UUID().uuidString))
+        XCTAssertEqual(store.sources[1].name, "Папка")
+    }
 }

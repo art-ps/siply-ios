@@ -58,6 +58,13 @@ final class SourceStore {
         save()
     }
 
+    func rename(_ source: Source, to name: String) {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, let i = sources.firstIndex(where: { $0.id == source.id }) else { return }
+        sources[i].name = name
+        save()
+    }
+
     /// Флешку вставили обратно — заново разрешаем bookmark'и; без перезапуска приложения.
     func refresh() {
         for source in sources { restore(source) }
@@ -103,6 +110,8 @@ final class SourceStore {
         let values = try? url.resourceValues(forKeys: [.volumeURLKey, .volumeNameKey])
         if let volume = values?.volume, volume.standardizedFileURL == url.standardizedFileURL,
            let name = values?.volumeName { return name }
+        // iOS 26: корень провайдера «На iPhone» лежит в папке с UUID-именем — такое имя пользователю не показываем
+        if UUID(uuidString: url.lastPathComponent) != nil { return "Папка" }
         switch url.lastPathComponent {
         case "com~apple~CloudDocs": return "iCloud Drive"
         case "File Provider Storage": return "На iPhone"   // ponytail: корень любого провайдера; сторонние тоже назовутся так
