@@ -20,7 +20,7 @@ struct SourcesView: View {
             }
             .navigationTitle("Источники")
             .navigationDestination(for: FolderRoute.self) { route in
-                Text(route.folder.lastPathComponent)   // временно, Task 9 заменит на FolderView
+                FolderView(folder: route.folder, source: route.source)
             }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
