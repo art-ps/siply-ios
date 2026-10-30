@@ -98,12 +98,16 @@ final class SourceStore {
         if let data = try? JSONEncoder().encode(own) { defaults.set(data, forKey: key) }
     }
 
-    /// Корень тома — имя тома, иначе имя папки.
+    /// Корень тома — имя тома, корни системных провайдеров — как в Файлах, иначе имя папки.
     private func displayName(of url: URL) -> String {
         let values = try? url.resourceValues(forKeys: [.volumeURLKey, .volumeNameKey])
         if let volume = values?.volume, volume.standardizedFileURL == url.standardizedFileURL,
            let name = values?.volumeName { return name }
-        return url.lastPathComponent
+        switch url.lastPathComponent {
+        case "com~apple~CloudDocs": return "iCloud Drive"
+        case "File Provider Storage": return "На iPhone"   // ponytail: корень любого провайдера; сторонние тоже назовутся так
+        default: return url.lastPathComponent
+        }
     }
 }
 

@@ -68,7 +68,9 @@ struct SourcesView: View {
         Label {
             VStack(alignment: .leading, spacing: 2) {
                 Text(source.name)
-                Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                if !subtitle.isEmpty, subtitle != source.name {
+                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                }
             }
         } icon: {
             Image(systemName: icon)
@@ -91,6 +93,7 @@ struct SourcesView: View {
     private func subtitle(for source: Source, url: URL) -> String {
         if source.kind == .appFolder { return "На iPhone" }
         if isUbiquitous(url) { return "iCloud Drive" }
-        return url.deletingLastPathComponent().lastPathComponent
+        let parent = url.deletingLastPathComponent().lastPathComponent
+        return UUID(uuidString: parent) == nil ? parent : ""   // корень провайдера лежит в UUID-контейнере
     }
 }
