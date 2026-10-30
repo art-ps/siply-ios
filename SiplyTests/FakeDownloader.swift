@@ -11,8 +11,9 @@ final class FakeDownloader: Downloader {
     private var waiting: [URL: CheckedContinuation<Void, Never>] = [:]
 
     func download(_ url: URL) async throws {
-        if failing.contains(url) { throw Failure() }
         requested.append(url)
+        if failing.contains(url) { throw Failure() }
+        precondition(waiting[url] == nil, "повторный download того же url, пока первый не завершён")
         await withCheckedContinuation { waiting[url] = $0 }
     }
 

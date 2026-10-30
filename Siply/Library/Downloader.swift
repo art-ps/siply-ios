@@ -5,15 +5,37 @@ protocol Downloader: AnyObject {
     func download(_ url: URL) async throws
 }
 
+/// Фоновая задача UIKit: завершается ровно один раз — по концу загрузки или по истечении времени.
+@MainActor
+private final class BackgroundTask {
+    private var id = UIBackgroundTaskIdentifier.invalid
+
+    static func begin() -> BackgroundTask {
+        let task = BackgroundTask()
+        task.id = UIApplication.shared.beginBackgroundTask { task.end() }
+        return task
+    }
+
+    func end() {
+        guard id != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(id)
+        id = .invalid
+    }
+}
+
 final class FileDownloader: Downloader {
     func download(_ url: URL) async throws {
         // Пока качаем, iOS не должна усыпить приложение.
-        let task = await UIApplication.shared.beginBackgroundTask(expirationHandler: nil)
-        defer { Task { @MainActor in UIApplication.shared.endBackgroundTask(task) } }
+        let background = await BackgroundTask.begin()
+        defer { Task { @MainActor in background.end() } }
 
         if (try? url.resourceValues(forKeys: [.isUbiquitousItemKey]).isUbiquitousItem) == true {
             try FileManager.default.startDownloadingUbiquitousItem(at: url)
             while DownloadState.of(url) != .local {
+                // iCloud не справился (офлайн, файл удалён) — иначе строка висела бы в .downloading вечно.
+                if let error = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingErrorKey]).ubiquitousItemDownloadingError {
+                    throw error
+                }
                 try await Task.sleep(for: .milliseconds(500))
             }
         } else {
