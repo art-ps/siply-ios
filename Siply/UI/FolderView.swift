@@ -52,7 +52,9 @@ struct FolderView: View {
         }
         .listStyle(.plain)
         .overlay {
-            if loaded && tracks.isEmpty && subfolders.isEmpty {
+            if !loaded && tracks.isEmpty && subfolders.isEmpty {
+                ProgressView()   // iCloud может перечислять нескачанную папку десятки секунд
+            } else if loaded && tracks.isEmpty && subfolders.isEmpty {
                 EmptyFolderView(text: source.kind == .appFolder
                                 ? "Скопируйте музыку в Files → На iPhone → Siply"
                                 : "В папке нет музыки")
@@ -80,24 +82,31 @@ struct FolderView: View {
     }
 
     private func reload() async {
-        let subs = FolderNode.subfolders(of: folder)
-        subfolders = subs
+        let folder = folder
         let onDemand = source.tagsOnDemand(for: folder)
+        // Чтение папки — в фоне: iCloud может подтягивать содержимое каталога с сервера,
+        // а FolderView на главном потоке, где любой блокирующий вызов замораживает экран.
+        let subs = await Task.detached { FolderNode.subfolders(of: folder) }.value
+        subfolders = subs
         // Серость подпапки — без тегов, только статус скачивания прямых файлов.
         // Провайдер без iCloud-статуса серым не бывает — не дёргаем атрибуты каждого файла.
-        dimmedFolders = onDemand ? [] : Set(subs.filter { sub in
-            FolderRowState.isDimmed(tracks: LibraryScanner.audioFiles(in: sub).map { url in
-                var t = Track(url: url)
-                t.download = DownloadState.of(url)
-                return t
+        // Нескачанная папка целиком серая: внутрь не заходим, листинг ждал бы загрузку.
+        dimmedFolders = onDemand ? [] : await Task.detached {
+            Set(subs.filter { sub in
+                DownloadState.of(sub) == .remote || FolderRowState.isDimmed(tracks: LibraryScanner.audioFiles(in: sub).map { url in
+                    var t = Track(url: url)
+                    t.download = DownloadState.of(url)
+                    return t
+                })
             })
-        })
+        }.value
         var loadedTracks = await LibraryScanner.tracks(in: folder, tagsOnDemand: onDemand)
         for i in loadedTracks.indices where inFlight.contains(loadedTracks[i].url) {
             loadedTracks[i].download = .downloading
         }
         tracks = loadedTracks
-        artwork = LibraryScanner.folderArtwork(for: folder, tracks: tracks)
+        let snapshot = loadedTracks
+        artwork = await Task.detached { LibraryScanner.folderArtwork(for: folder, tracks: snapshot) }.value
         loaded = true
     }
 

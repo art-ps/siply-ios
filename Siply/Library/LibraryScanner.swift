@@ -128,7 +128,10 @@ enum LibraryScanner {
     static func folderArtwork(for folder: URL, tracks: [Track]) -> Data? {
         if let data = tracks.lazy.compactMap(\.artwork).first { return data }
         for name in ["cover.jpg", "cover.png", "folder.jpg"] {
-            if let data = try? Data(contentsOf: folder.appendingPathComponent(name)) { return data }
+            let file = folder.appendingPathComponent(name)
+            // Не скачанная обложка в iCloud: Data(contentsOf:) ждал бы загрузку, вися на главном потоке.
+            guard DownloadState.of(file) == .local else { continue }
+            if let data = try? Data(contentsOf: file) { return data }
         }
         return nil
     }

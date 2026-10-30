@@ -24,13 +24,17 @@ final class FolderNode: Identifiable, Hashable {
     /// Видимые подпапки, отсортированные как в Finder.
     static func subfolders(of url: URL) -> [URL] {
         guard let items = try? FileManager.default.contentsOfDirectory(
-            at: url, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]
+            at: url, includingPropertiesForKeys: [.isDirectoryKey, .isPackageKey], options: [.skipsHiddenFiles]
         ) else {
             NSLog("Siply: не удалось прочитать папку %@", url.path)
             return []
         }
+        // Пакеты (.logicx, .app) — не папки с музыкой; в iCloud их листинг ещё и ждёт загрузку целиком.
         return items
-            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+            .filter {
+                let v = try? $0.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])
+                return v?.isDirectory == true && v?.isPackage != true
+            }
             .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
     }
 
