@@ -263,4 +263,51 @@ final class PlayerModelTests: XCTestCase {
         player.markDownloaded(tracks[2].url)
         XCTAssertEqual(player.queue[2].download, .local)
     }
+
+    func testPlayAfterFailedDownloadRetriesInsteadOfResumingOldTrack() async {
+        remote(1)
+        downloader.failing = [tracks[1].url]
+        player.play(queue: tracks, startingAt: 0)  // префетч t1 падает сразу
+        player.next()                               // и ожидание t1 падает
+        await settle()
+        XCTAssertEqual(player.currentTrack?.url, tracks[1].url)
+        XCTAssertFalse(player.isDownloading)
+        downloader.failing = []
+        player.togglePlayPause()
+        XCTAssertEqual(downloader.requested, [tracks[1].url, tracks[1].url, tracks[1].url])
+        XCTAssertFalse(engine.playing, "старый трек не возобновляется")
+        XCTAssertTrue(player.isDownloading)
+        downloader.complete(tracks[1].url)
+        await settle()
+        XCTAssertEqual(engine.loaded, [tracks[0].url, tracks[1].url])
+        XCTAssertTrue(engine.playing)
+        XCTAssertTrue(player.isPlaying)
+    }
+
+    func testPreviousDuringDownloadStepsBack() {
+        remote(1)
+        player.play(queue: tracks, startingAt: 0)
+        engine.currentTime = 10
+        player.next()
+        player.previous()
+        XCTAssertEqual(player.currentTrack, tracks[0])
+        XCTAssertEqual(engine.loaded, [tracks[0].url, tracks[0].url])
+        XCTAssertFalse(player.isDownloading)
+    }
+
+    func testStaleDownloadCompletionDoesNotLoadOldTarget() async {
+        remote(1); remote(2)
+        player.play(queue: tracks, startingAt: 0)
+        player.next()
+        player.next()
+        downloader.complete(tracks[1].url)
+        await settle()
+        XCTAssertEqual(engine.loaded, [tracks[0].url])
+        XCTAssertEqual(player.currentTrack?.url, tracks[2].url)
+        XCTAssertTrue(player.isDownloading)
+        downloader.complete(tracks[2].url)
+        await settle()
+        XCTAssertEqual(engine.loaded, [tracks[0].url, tracks[2].url])
+        XCTAssertTrue(player.isPlaying)
+    }
 }

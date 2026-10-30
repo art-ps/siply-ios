@@ -76,11 +76,14 @@ final class PlayerModel {
 
     func togglePlayPause() {
         // Пока качается — в движке старый трек, играть нечего.
-        guard currentIndex != nil, !isDownloading else { return }
+        guard let cur = currentIndex, !isDownloading else { return }
         if isPlaying {
             engine.pause()
             isPlaying = false
             stopTimer()
+        } else if queue[cur].download != .local {
+            // Загрузка не удалась — в движке старый трек; качаем заново.
+            _ = playTrack(cur)
         } else {
             startPlaying()
         }
@@ -149,7 +152,9 @@ final class PlayerModel {
     /// Звука нет, пока трек не скачан; ошибка — плеер стоит, трек остаётся .remote.
     private func playAfterDownload(_ idx: Int) {
         currentIndex = idx
+        // Как halt(): позиция старого трека не должна влиять на previous() и прогресс.
         engine.pause()
+        engine.currentTime = 0
         isPlaying = false
         stopTimer()
         currentTime = 0
