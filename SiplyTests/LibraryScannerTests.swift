@@ -57,6 +57,27 @@ final class LibraryScannerTests: XCTestCase {
         XCTAssertEqual(names, ["02 Good.wav"])
     }
 
+    func testTagsOnDemandSkipsMetadata() async throws {
+        let tmp = TempDir()
+        try AudioFixtures.writeWav(to: tmp.url.appendingPathComponent("01 A.wav"), seconds: 2)
+        tmp.file("02 Bad.mp3", Data("not audio".utf8))
+        let tracks = await LibraryScanner.tracks(in: tmp.url, tagsOnDemand: true)
+        XCTAssertEqual(tracks.count, 2)
+        let a = try XCTUnwrap(tracks.first)
+        XCTAssertEqual(a.title, "01 A")
+        XCTAssertNil(a.artwork)
+        XCTAssertEqual(a.duration, 0)
+        XCTAssertTrue(tracks.allSatisfy { $0.download == .local })
+    }
+
+    func testDefaultStillFiltersUnplayable() async throws {
+        let tmp = TempDir()
+        try AudioFixtures.writeWav(to: tmp.url.appendingPathComponent("01 A.wav"))
+        tmp.file("02 Bad.mp3", Data("not audio".utf8))
+        let tracks = await LibraryScanner.tracks(in: tmp.url)
+        XCTAssertEqual(tracks.map(\.title), ["01 A"])
+    }
+
     func testIsPlayable() async throws {
         let tmp = TempDir()
         let bad = tmp.file("x.mp3", Data("not audio".utf8))

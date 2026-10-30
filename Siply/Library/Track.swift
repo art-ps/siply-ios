@@ -10,6 +10,7 @@ struct Track: Identifiable, Hashable {
     var trackNumber: Int?
     var discNumber: Int?
     var artwork: Data?
+    var download: DownloadState = .local
 
     var id: URL { url }
 

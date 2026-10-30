@@ -96,11 +96,22 @@ enum LibraryScanner {
     }
 
     /// Все играемые треки папки с тегами, параллельно, отсортированные.
-    static func tracks(in folder: URL) async -> [Track] {
+    /// Не скачанный файл — серая строка по имени. tagsOnDemand (SMB, Яндекс.Диск): теги не читаем,
+    /// чтобы провайдер не качал файлы целиком.
+    static func tracks(in folder: URL, tagsOnDemand: Bool = false) async -> [Track] {
         let urls = audioFiles(in: folder)
         let loaded = await withTaskGroup(of: Track?.self) { group in
             for url in urls {
-                group.addTask { await isPlayable(url) ? await loadTrack(url) : nil }
+                group.addTask {
+                    let state = DownloadState.of(url)
+                    if state == .remote {
+                        var track = Track(url: url)
+                        track.download = .remote
+                        return track
+                    }
+                    if tagsOnDemand { return Track(url: url) }
+                    return await isPlayable(url) ? await loadTrack(url) : nil
+                }
             }
             var out: [Track] = []
             for await t in group { if let t { out.append(t) } }
