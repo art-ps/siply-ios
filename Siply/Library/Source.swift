@@ -94,3 +94,10 @@ final class SourceStore {
         return url.lastPathComponent
     }
 }
+
+extension Source {
+    /// Теги по запросу: внешние источники и iCloud — чтобы провайдер не качал файлы целиком.
+    func tagsOnDemand(for folder: URL) -> Bool {
+        kind != .appFolder && (try? folder.resourceValues(forKeys: [.isUbiquitousItemKey]).isUbiquitousItem) != true
+    }
+}
