@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 struct SearchHit: Identifiable, Hashable {
     let url: URL
@@ -9,7 +10,8 @@ struct SearchHit: Identifiable, Hashable {
 
 /// Поиск по именам файлов и папок во всех источниках. Дерево обходится один раз
 /// на первый непустой запрос и держится в памяти до invalidate().
-@MainActor
+// @Observable нужен только ради .environment(_:); наблюдаемых полей не добавляет.
+@MainActor @Observable
 final class SearchIndex {
     private struct Entry {
         let url: URL
