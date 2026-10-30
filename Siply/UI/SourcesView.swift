@@ -25,6 +25,7 @@ struct SourcesView: View {
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button { showPicker = true } label: { Image(systemName: "plus") }
+                        .accessibilityLabel("Добавить папку")
                 }
             }
             .fileImporter(isPresented: $showPicker, allowedContentTypes: [.folder]) { result in
@@ -33,7 +34,7 @@ struct SourcesView: View {
                 case .failure(let error): NSLog("Siply: выбор папки не удался: \(error)")
                 }
             }
-            .onChange(of: store.pendingRoute) { _, route in
+            .onChange(of: store.pendingRoute, initial: true) { _, route in
                 if let route {
                     path = [route]
                     store.pendingRoute = nil
@@ -50,7 +51,7 @@ struct SourcesView: View {
                 label(for: source, icon: icon(for: source, url: url), subtitle: subtitle(for: source, url: url))
             }
         } else {
-            label(for: source, icon: icon(for: source, url: url), subtitle: "Не подключена")
+            label(for: source, icon: "externaldrive", subtitle: "Не подключена")   // отключённый диск
                 .foregroundStyle(.secondary)
         }
     }
