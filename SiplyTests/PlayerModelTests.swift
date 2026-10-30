@@ -236,6 +236,7 @@ final class PlayerModelTests: XCTestCase {
         player.next()
         XCTAssertEqual(engine.loaded, [tracks[0].url])
         XCTAssertTrue(player.isDownloading)
+        XCTAssertEqual(player.duration, 0, "длина старого трека не показывается")
         downloader.complete(tracks[1].url)
         await settle()
         XCTAssertEqual(engine.loaded, [tracks[0].url, tracks[1].url])

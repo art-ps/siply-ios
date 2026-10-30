@@ -16,7 +16,8 @@ final class PlayerModel {
     /// Текущий трек качается, звука ещё нет — для индикатора в мини-плеере.
     private(set) var isDownloading = false
 
-    var duration: TimeInterval { engine.duration }
+    /// Трек не скачан — в движке чужой звук, длины нет.
+    var duration: TimeInterval { currentTrack?.download == .local ? engine.duration : 0 }
     var currentTrack: Track? { currentIndex.map { queue[$0] } }
 
     var volume: Float {
