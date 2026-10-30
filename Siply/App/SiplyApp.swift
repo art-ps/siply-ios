@@ -22,7 +22,7 @@ struct RootView: View {
     var body: some View {
         TabView {
             Tab("Папки", systemImage: "folder") { SourcesView() }
-            Tab("Поиск", systemImage: "magnifyingglass", role: .search) { Text("Поиск") }   // Task 11: SearchView
+            Tab("Поиск", systemImage: "magnifyingglass", role: .search) { SearchView() }
         }
         .tabViewBottomAccessory(isEnabled: player.currentTrack != nil) { MiniPlayer() }
         .tabBarMinimizeBehavior(.onScrollDown)

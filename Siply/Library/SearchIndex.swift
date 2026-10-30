@@ -21,9 +21,9 @@ final class SearchIndex {
 
     private static let limit = 200
 
-    private let store: SourceStore
-    private var cache: [Entry]?
-    private var walkTask: Task<[Entry], Never>?
+    @ObservationIgnored private let store: SourceStore
+    @ObservationIgnored private var cache: [Entry]?
+    @ObservationIgnored private var walkTask: Task<[Entry], Never>?
     private(set) var walkCount = 0
 
     init(store: SourceStore) { self.store = store }
