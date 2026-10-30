@@ -1,0 +1,96 @@
+import Foundation
+import Observation
+
+struct Source: Identifiable, Hashable, Codable {
+    enum Kind: Hashable, Codable { case appFolder, bookmark(Data) }
+    let id: UUID
+    var name: String
+    var kind: Kind
+}
+
+/// Куда навигировать: папка внутри источника. Используется NavigationStack, поиском и FileOpener.
+struct FolderRoute: Hashable { let folder: URL; let source: Source }
+
+/// Список источников: своя папка приложения (всегда первая) + папки пользователя по bookmark'ам.
+@MainActor @Observable
+final class SourceStore {
+    private(set) var sources: [Source]
+    var pendingRoute: FolderRoute?   // просьба открыть папку (из onOpenURL); SourcesView забирает и обнуляет
+
+    private let defaults: UserDefaults
+    private let appFolder: URL
+    private let key = "sources"
+    private var resolved: [UUID: URL] = [:]
+    // Фиксированный id, чтобы источник «Siply» не менялся между запусками
+    private let appSource = Source(id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+                                   name: "Siply", kind: .appFolder)
+
+    init(defaults: UserDefaults = .standard,
+         appFolder: URL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]) {
+        self.defaults = defaults
+        self.appFolder = appFolder
+        let saved = defaults.data(forKey: key).flatMap { try? JSONDecoder().decode([Source].self, from: $0) } ?? []
+        sources = [appSource] + saved.filter { $0.kind != .appFolder }
+        for source in sources { restore(source) }
+    }
+
+    func add(folder url: URL) {
+        let std = url.standardizedFileURL
+        if sources.contains(where: { self.url(of: $0)?.standardizedFileURL == std }) { return }
+        _ = url.startAccessingSecurityScopedResource()   // false для не-scoped папок — не ошибка; stop не зовём
+        guard let data = try? url.bookmarkData() else { return }
+        let source = Source(id: UUID(), name: displayName(of: url), kind: .bookmark(data))
+        resolved[source.id] = url
+        sources.append(source)
+        save()
+    }
+
+    func remove(_ source: Source) {
+        guard source.kind != .appFolder else { return }
+        sources.removeAll { $0.id == source.id }
+        resolved[source.id] = nil
+        save()
+    }
+
+    func url(of source: Source) -> URL? {
+        switch source.kind {
+        case .appFolder: appFolder
+        case .bookmark: resolved[source.id]
+        }
+    }
+
+    func isAvailable(_ source: Source) -> Bool {
+        guard let url = url(of: source) else { return false }
+        var isDir: ObjCBool = false
+        return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) && isDir.boolValue
+    }
+
+    // MARK: - private
+
+    private func restore(_ source: Source) {
+        guard case .bookmark(let data) = source.kind else { return }
+        var stale = false
+        guard let url = try? URL(resolvingBookmarkData: data, options: [], relativeTo: nil, bookmarkDataIsStale: &stale)
+        else { return }
+        _ = url.startAccessingSecurityScopedResource()
+        resolved[source.id] = url
+        if stale, let fresh = try? url.bookmarkData(),
+           let i = sources.firstIndex(where: { $0.id == source.id }) {
+            sources[i].kind = .bookmark(fresh)
+            save()
+        }
+    }
+
+    private func save() {
+        let own = sources.filter { $0.kind != .appFolder }
+        if let data = try? JSONEncoder().encode(own) { defaults.set(data, forKey: key) }
+    }
+
+    /// Корень тома — имя тома, иначе имя папки.
+    private func displayName(of url: URL) -> String {
+        let values = try? url.resourceValues(forKeys: [.volumeURLKey, .volumeNameKey])
+        if let volume = values?.volume, volume.standardizedFileURL == url.standardizedFileURL,
+           let name = values?.volumeName { return name }
+        return url.lastPathComponent
+    }
+}
