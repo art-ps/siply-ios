@@ -52,6 +52,7 @@ struct NowPlayingSheet: View {
                     .buttonStyle(.bordered)
                     .font(.callout.monospacedDigit())
                     .accessibilityLabel("Скорость")
+                    .accessibilityValue(rateLabel)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 RoutePicker().frame(width: 44, height: 44)
                 sleepMenu.frame(maxWidth: .infinity, alignment: .trailing)

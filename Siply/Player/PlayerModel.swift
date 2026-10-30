@@ -146,8 +146,10 @@ final class PlayerModel {
 
     /// Файл убран с устройства — в очереди снова .remote, перед play скачается заново. Текущий не трогаем.
     func markEvicted(_ url: URL) {
-        guard currentTrack?.url != url else { return }
+        guard currentTrack?.url != url, queue.contains(where: { $0.url == url }) else { return }
         setDownload(.remote, for: url)
+        // Могли выгрузить уже скачанный следующий — качаем снова, пока экран не заблокирован.
+        if isPlaying { prefetchNext() }
     }
 
     // MARK: - Внутреннее
@@ -349,9 +351,6 @@ final class PlayerModel {
         if queue[cur].download == .local, load(cur) {
             engine.currentTime = state.position
             currentTime = state.position
-        } else {
-            currentTime = 0
-            didLoad = false
         }
     }
 

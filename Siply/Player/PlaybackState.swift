@@ -13,8 +13,18 @@ protocol TrackLoader: Sendable {
 }
 
 struct FileTrackLoader: TrackLoader {
+    var appFolder = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+
     func track(at url: URL) async -> Track? {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        let isCloud = (try? url.resourceValues(forKeys: [.isUbiquitousItemKey]).isUbiquitousItem) == true
+        // Как tagsOnDemand: SMB, Яндекс.Диск, флешка — только имя, иначе провайдер качает файлы целиком.
+        // Пути сравниваем с развёрнутыми симлинками: /private то есть, то нет.
+        if !isCloud, !url.resolvingSymlinksInPath().path.hasPrefix(appFolder.resolvingSymlinksInPath().path + "/") {
+            var t = Track(url: url)
+            t.download = .onDemand
+            return t
+        }
         // Не скачанный — серая строка без чтения тегов: файла на диске нет.
         if DownloadState.of(url) == .remote {
             var t = Track(url: url)

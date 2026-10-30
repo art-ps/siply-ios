@@ -470,9 +470,25 @@ final class PlayerModelTests: XCTestCase {
         let player2 = PlayerModel(engine: engine2, downloader: downloader, defaults: defaults)
         let loader = FakeTrackLoader(); for t in tracks { loader.tracks[t.url] = t }
         await player2.restore(using: loader)
+        XCTAssertEqual(player2.queue, tracks)
         XCTAssertEqual(player2.currentTrack, tracks[1]); XCTAssertEqual(player2.currentTime, 0)
         player2.togglePlayPause()                         // обычный путь: битый пропущен, играет следующий
         XCTAssertEqual(engine2.loaded, [tracks[2].url])
+    }
+
+    func testRestoreOnDemandCurrentDoesNotOpenFileAndDownloadsOnPlay() async {
+        player.play(queue: tracks, startingAt: 1)
+        engine.currentTime = 17; player.seek(to: 17); player.togglePlayPause()
+        downloader.requested = []
+        let engine2 = FakeAudioEngine()
+        let player2 = PlayerModel(engine: engine2, downloader: downloader, defaults: defaults)
+        let loader = FakeTrackLoader(); for t in tracks { loader.tracks[t.url] = t }
+        tracks[1].download = .onDemand; loader.tracks[tracks[1].url] = tracks[1]
+        await player2.restore(using: loader)
+        XCTAssertTrue(engine2.loaded.isEmpty)
+        XCTAssertEqual(player2.currentTime, 0)
+        player2.togglePlayPause()
+        XCTAssertEqual(downloader.requested, [tracks[1].url])
     }
 
     func testPersistDuringDownloadStoresZeroPosition() {
@@ -505,6 +521,7 @@ final class PlayerModelTests: XCTestCase {
 
     func testMarkEvictedMakesTrackRemoteAndNextDownloadsIt() async {
         player.play(queue: tracks, startingAt: 0)
+        player.togglePlayPause()   // на паузе префетча нет — видно чистое .remote
         downloader.requested = []
         player.markEvicted(tracks[1].url)
         XCTAssertEqual(player.queue[1].download, .remote)
@@ -513,6 +530,13 @@ final class PlayerModelTests: XCTestCase {
         XCTAssertEqual(engine.loaded, [tracks[0].url])
         downloader.complete(tracks[1].url); await settle()
         XCTAssertEqual(engine.loaded, [tracks[0].url, tracks[1].url])
+    }
+
+    func testMarkEvictedWhilePlayingRefetchesNext() {
+        player.play(queue: Array(tracks[0...1]), startingAt: 0)
+        XCTAssertTrue(downloader.requested.isEmpty)
+        player.markEvicted(tracks[1].url)
+        XCTAssertEqual(downloader.requested, [tracks[1].url])
     }
 
     func testMarkEvictedIgnoresCurrentTrack() {

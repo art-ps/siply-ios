@@ -7,6 +7,7 @@ struct FolderView: View {
     let autoDownload: Bool   // пришли из серой подпапки — сразу качаем её нескачанное
 
     @Environment(PlayerModel.self) private var player
+    @Environment(SourceStore.self) private var store
     @State private var subfolders: [URL] = []
     @State private var dimmedFolders: Set<URL> = []
     @State private var tracks: [Track] = []
@@ -18,6 +19,7 @@ struct FolderView: View {
     @State private var folderActions: [URL: Set<FileAction>] = [:]   // считаем в фоне вместе с серостью
     @State private var watchKey = 0   // смена перезапускает опрос статусов
     @State private var lastTapToken: UUID?        // автоплей после загрузки — только для последнего тапа
+    @State private var downloadingFolders: Set<URL> = []   // «Скачать» на подпапке: белеет, когда докачается
 
     init(folder: URL, source: Source, autoDownload: Bool = false) {
         self.folder = folder
@@ -25,10 +27,15 @@ struct FolderView: View {
         self.autoDownload = autoDownload
     }
 
+    /// Корень источника — имя источника: «Папка» вместо UUID, новое имя после переименования.
+    private var title: String {
+        folder.standardizedFileURL == store.url(of: source)?.standardizedFileURL ? source.name : folder.lastPathComponent
+    }
+
     var body: some View {
         List {
             if !tracks.isEmpty || !subfolders.isEmpty {
-                FolderHeader(artwork: artwork, name: folder.lastPathComponent, tracks: tracks,
+                FolderHeader(artwork: artwork, name: title, tracks: tracks,
                              play: playAll, shuffle: shuffleAll)
                     .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 16, trailing: 16))
                     .listRowSeparator(.hidden)
@@ -84,7 +91,7 @@ struct FolderView: View {
                                 : "В папке нет музыки")
             }
         }
-        .navigationTitle(folder.lastPathComponent)
+        .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: folder) {
             await reload()
@@ -169,6 +176,8 @@ struct FolderView: View {
             player.markEvicted(url)
         }
         if let url = failed.first { downloadError = url.lastPathComponent }
+        // Плеер может скачать выгруженный снова — пусть опрос это увидит.
+        if failed.count < targets.count { watchKey += 1 }
     }
 
     private func downloadFolder(_ sub: URL) {
@@ -180,7 +189,8 @@ struct FolderView: View {
                 return urls.filter { (try? FileManager.default.startDownloadingUbiquitousItem(at: $0)) == nil }
             }.value
             if let url = failed.first { downloadError = url.lastPathComponent }
-            await reload()
+            downloadingFolders.insert(sub)
+            await reload()   // перезапустит и опрос
         }
     }
 
@@ -249,8 +259,25 @@ struct FolderView: View {
         func pending() -> [URL] {
             tracks.filter { $0.download == .remote || $0.download == .downloading }.map(\.url)
         }
-        while !pending().isEmpty {
+        while !pending().isEmpty || !downloadingFolders.isEmpty {
             do { try await Task.sleep(for: .seconds(1)) } catch { return }
+            let folders = downloadingFolders
+            if !folders.isEmpty {
+                // Атрибуты и листинг iCloud могут блокировать — не на главном.
+                let done = await Task.detached { () -> Set<URL> in
+                    Set(folders.filter { sub in
+                        var u = sub
+                        u.removeAllCachedResourceValues()   // иначе NSURL отдаёт закэшированный .notDownloaded
+                        return DownloadState.of(u) != .remote
+                            && !LibraryScanner.audioFiles(in: u).contains { DownloadState.of($0) == .remote }
+                    })
+                }.value
+                if !done.isEmpty {
+                    downloadingFolders.subtract(done)
+                    await reload()   // строка белеет; reload перезапустит опрос
+                    return
+                }
+            }
             for url in pending() {
                 var u = url
                 u.removeAllCachedResourceValues()   // иначе NSURL отдаёт закэшированный .notDownloaded
