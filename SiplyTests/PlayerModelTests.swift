@@ -502,4 +502,23 @@ final class PlayerModelTests: XCTestCase {
         XCTAssertTrue(player2.isPlaying)
         XCTAssertEqual(engine2.loaded, [tracks[0].url])
     }
+
+    func testMarkEvictedMakesTrackRemoteAndNextDownloadsIt() async {
+        player.play(queue: tracks, startingAt: 0)
+        downloader.requested = []
+        player.markEvicted(tracks[1].url)
+        XCTAssertEqual(player.queue[1].download, .remote)
+        player.next()
+        XCTAssertEqual(downloader.requested, [tracks[1].url])
+        XCTAssertEqual(engine.loaded, [tracks[0].url])
+        downloader.complete(tracks[1].url); await settle()
+        XCTAssertEqual(engine.loaded, [tracks[0].url, tracks[1].url])
+    }
+
+    func testMarkEvictedIgnoresCurrentTrack() {
+        player.play(queue: tracks, startingAt: 0)
+        player.markEvicted(tracks[0].url)
+        XCTAssertEqual(player.queue[0].download, .local)
+        XCTAssertTrue(player.isPlaying)
+    }
 }

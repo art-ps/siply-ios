@@ -14,6 +14,9 @@ struct FolderView: View {
     @State private var loaded = false
     @State private var downloadError: String?
     @State private var inFlight: Set<URL> = []   // качаются по тапу: перечитывание папки не должно сбросить строку
+    @State private var isCloud = false
+    @State private var folderActions: [URL: Set<FileAction>] = [:]   // считаем в фоне вместе с серостью
+    @State private var watchKey = 0   // смена перезапускает опрос статусов
     @State private var lastTapToken: UUID?        // автоплей после загрузки — только для последнего тапа
 
     init(folder: URL, source: Source, autoDownload: Bool = false) {
@@ -37,6 +40,15 @@ struct FolderView: View {
                         NavigationLink(value: FolderRoute(folder: sub, source: source, autoDownload: dimmed)) {
                             FolderRow(url: sub, dimmed: dimmed)
                         }
+                        .contextMenu {
+                            let actions = folderActions[sub] ?? []
+                            if actions.contains(.download) {
+                                Button("Скачать", systemImage: "icloud.and.arrow.down") { downloadFolder(sub) }
+                            }
+                            if actions.contains(.evict) {
+                                Button("Удалить с устройства", systemImage: "xmark.icloud") { evictFolder(sub) }
+                            }
+                        }
                     }
                 }
             }
@@ -45,6 +57,18 @@ struct FolderView: View {
                     ForEach(tracks) { track in
                         TrackRow(track: track, isCurrent: player.currentTrack?.url == track.url) {
                             tap(track.url)
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            let actions = FileAction.available(isUbiquitous: isCloud, state: track.download)
+                            if actions.contains(.download) {
+                                Button("Скачать", systemImage: "icloud.and.arrow.down") { download(track.url) }
+                            }
+                            if actions.contains(.evict) {
+                                // не .destructive: файл остаётся в iCloud, действие обратимо
+                                Button("Удалить с устройства", systemImage: "xmark.icloud") {
+                                    Task { await evict([track.url]) }
+                                }
+                            }
                         }
                     }
                 }
@@ -69,8 +93,8 @@ struct FolderView: View {
                     try? FileManager.default.startDownloadingUbiquitousItem(at: t.url)
                 }
             }
-            await watchDownloads()
         }
+        .task(id: watchKey) { await watchDownloads() }
         .refreshable { await reload() }
         .alert("Не удалось скачать", isPresented: Binding(
             get: { downloadError != nil }, set: { if !$0 { downloadError = nil } }
@@ -88,18 +112,28 @@ struct FolderView: View {
         // а FolderView на главном потоке, где любой блокирующий вызов замораживает экран.
         let subs = await Task.detached { FolderNode.subfolders(of: folder) }.value
         subfolders = subs
+        let cloud = (try? folder.resourceValues(forKeys: [.isUbiquitousItemKey]).isUbiquitousItem) == true
+        isCloud = cloud
         // Серость подпапки — без тегов, только статус скачивания прямых файлов.
         // Провайдер без iCloud-статуса серым не бывает — не дёргаем атрибуты каждого файла.
         // Нескачанная папка целиком серая: внутрь не заходим, листинг ждал бы загрузку.
-        dimmedFolders = onDemand ? [] : await Task.detached {
-            Set(subs.filter { sub in
-                DownloadState.of(sub) == .remote || FolderRowState.isDimmed(tracks: LibraryScanner.audioFiles(in: sub).map { url in
-                    var t = Track(url: url)
-                    t.download = DownloadState.of(url)
+        let (dimmed, actions) = onDemand ? ([], [:]) : await Task.detached { () -> (Set<URL>, [URL: Set<FileAction>]) in
+            var dimmed: Set<URL> = []
+            var actions: [URL: Set<FileAction>] = [:]
+            for sub in subs {
+                let folderState = DownloadState.of(sub)
+                let states = folderState == .remote ? [] : LibraryScanner.audioFiles(in: sub).map { DownloadState.of($0) }
+                if folderState == .remote || FolderRowState.isDimmed(tracks: states.map { state in
+                    var t = Track(url: sub)
+                    t.download = state
                     return t
-                })
-            })
+                }) { dimmed.insert(sub) }
+                actions[sub] = FileAction.available(isUbiquitous: cloud, folderState: folderState, fileStates: states)
+            }
+            return (dimmed, actions)
         }.value
+        dimmedFolders = dimmed
+        folderActions = actions
         var loadedTracks = await LibraryScanner.tracks(in: folder, tagsOnDemand: onDemand)
         for i in loadedTracks.indices where inFlight.contains(loadedTracks[i].url) {
             loadedTracks[i].download = .downloading
@@ -108,6 +142,56 @@ struct FolderView: View {
         let snapshot = loadedTracks
         artwork = await Task.detached { LibraryScanner.folderArtwork(for: folder, tracks: snapshot) }.value
         loaded = true
+        watchKey += 1
+    }
+
+    private func download(_ url: URL) {
+        do {
+            try FileManager.default.startDownloadingUbiquitousItem(at: url)
+            if let i = tracks.firstIndex(where: { $0.url == url }) { tracks[i].download = .downloading }
+            watchKey += 1
+        } catch {
+            downloadError = url.lastPathComponent
+        }
+    }
+
+    /// Убирает файлы с устройства (в iCloud остаются). Текущий трек пропускаем — он играет.
+    private func evict(_ urls: [URL]) async {
+        let targets = urls.filter { $0 != player.currentTrack?.url }
+        let failed = await Task.detached {
+            targets.filter { (try? FileManager.default.evictUbiquitousItem(at: $0)) == nil }
+        }.value
+        for url in targets where !failed.contains(url) {
+            if let i = tracks.firstIndex(where: { $0.url == url }) {
+                tracks[i] = Track(url: url)
+                tracks[i].download = .remote
+            }
+            player.markEvicted(url)
+        }
+        if let url = failed.first { downloadError = url.lastPathComponent }
+    }
+
+    private func downloadFolder(_ sub: URL) {
+        Task {
+            // Файловые вызовы — в фоне: iCloud-атрибуты и листинг могут блокировать
+            let failed = await Task.detached { () -> [URL] in
+                let urls = DownloadState.of(sub) == .remote ? [sub]
+                    : LibraryScanner.audioFiles(in: sub).filter { DownloadState.of($0) == .remote }
+                return urls.filter { (try? FileManager.default.startDownloadingUbiquitousItem(at: $0)) == nil }
+            }.value
+            if let url = failed.first { downloadError = url.lastPathComponent }
+            await reload()
+        }
+    }
+
+    private func evictFolder(_ sub: URL) {
+        Task {
+            let urls = await Task.detached {
+                LibraryScanner.audioFiles(in: sub).filter { DownloadState.of($0) == .local }
+            }.value
+            await evict(urls)
+            await reload()
+        }
     }
 
     private func playAll() {

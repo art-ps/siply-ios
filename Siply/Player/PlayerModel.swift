@@ -144,6 +144,12 @@ final class PlayerModel {
     /// Файл скачан (например, тапом по строке) — отметить во всей очереди.
     func markDownloaded(_ url: URL) { setDownload(.local, for: url) }
 
+    /// Файл убран с устройства — в очереди снова .remote, перед play скачается заново. Текущий не трогаем.
+    func markEvicted(_ url: URL) {
+        guard currentTrack?.url != url else { return }
+        setDownload(.remote, for: url)
+    }
+
     // MARK: - Внутреннее
 
     private func trackFinished() {
