@@ -355,4 +355,37 @@ final class PlayerModelTests: XCTestCase {
         XCTAssertEqual(player2.rate, 1.25)
         XCTAssertEqual(engine2.rate, 1.25)
     }
+
+    func testSleepMinutesSetsDeadlineAndPausesOnTick() throws {
+        player.play(queue: tracks, startingAt: 0)
+        let before = Date()
+        player.sleep = .minutes(15)
+        let deadline = try XCTUnwrap(player.sleepDeadline)
+        XCTAssertEqual(deadline.timeIntervalSince(before), 15 * 60, accuracy: 1)
+        player.tick(now: deadline.addingTimeInterval(-1))
+        XCTAssertTrue(player.isPlaying)
+        player.tick(now: deadline)
+        XCTAssertFalse(player.isPlaying)
+        XCTAssertFalse(engine.playing)
+        XCTAssertEqual(player.sleep, .off)
+        XCTAssertNil(player.sleepDeadline)
+    }
+
+    func testSleepOffClearsDeadline() {
+        player.sleep = .minutes(30)
+        player.sleep = .off
+        XCTAssertNil(player.sleepDeadline)
+    }
+
+    func testSleepEndOfTrackStopsEvenWithRepeatOne() {
+        player.play(queue: tracks, startingAt: 1)
+        player.repeatMode = .one
+        player.sleep = .endOfTrack
+        engine.finish()
+        XCTAssertFalse(player.isPlaying)
+        XCTAssertEqual(player.currentTrack, tracks[1])
+        XCTAssertEqual(player.currentTime, 0)
+        XCTAssertEqual(engine.loaded, [tracks[1].url])   // не перезагружен
+        XCTAssertEqual(player.sleep, .off)
+    }
 }

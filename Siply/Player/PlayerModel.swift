@@ -1,6 +1,11 @@
 import Foundation
 import Observation
 
+/// Таймер сна: через N минут или в конце текущего трека.
+enum SleepOption: Hashable {
+    case off, minutes(Int), endOfTrack
+}
+
 /// Состояние воспроизведения: очередь, текущий трек, режимы. Звук — через AudioEngine.
 @MainActor
 @Observable
@@ -31,6 +36,14 @@ final class PlayerModel {
     var repeatMode: RepeatMode {
         didSet { defaults.set(repeatMode.rawValue, forKey: Keys.repeatMode) }
     }
+
+    /// Между запусками не сохраняется.
+    var sleep: SleepOption = .off {
+        didSet {
+            if case .minutes(let m) = sleep { sleepDeadline = Date().addingTimeInterval(Double(m) * 60) } else { sleepDeadline = nil }
+        }
+    }
+    private(set) var sleepDeadline: Date?
 
     @ObservationIgnored private let engine: AudioEngine
     @ObservationIgnored private let downloader: Downloader
@@ -129,6 +142,8 @@ final class PlayerModel {
     // MARK: - Внутреннее
 
     private func trackFinished() {
+        // «До конца трека» важнее повтора: тишина, трек остаётся текущим.
+        if sleep == .endOfTrack { halt(); sleep = .off; return }
         if repeatMode == .one, let i = currentIndex, playTrack(i) { return }
         step(by: 1, wrap: repeatMode == .all)
     }
@@ -266,11 +281,20 @@ final class PlayerModel {
     private func startTimer() {
         stopTimer()
         let t = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.currentTime = self?.engine.currentTime ?? 0 }
+            MainActor.assumeIsolated { self?.tick(now: Date()) }
         }
         // .common — чтобы прогресс не замирал, пока открыто меню.
         RunLoop.main.add(t, forMode: .common)
         timer = t
+    }
+
+    /// Тик таймера: прогресс и срок таймера сна.
+    func tick(now: Date) {
+        currentTime = engine.currentTime
+        if let deadline = sleepDeadline, now >= deadline, isPlaying {
+            togglePlayPause()
+            sleep = .off
+        }
     }
 
     private func stopTimer() {

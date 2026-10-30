@@ -54,8 +54,7 @@ struct NowPlayingSheet: View {
                     .accessibilityLabel("Скорость")
                     .frame(maxWidth: .infinity, alignment: .leading)
                 RoutePicker().frame(width: 44, height: 44)
-                // Справа — место под таймер сна.
-                Color.clear.frame(maxWidth: .infinity)
+                sleepMenu.frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
         .padding(.horizontal, 32)
@@ -65,6 +64,32 @@ struct NowPlayingSheet: View {
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+    }
+
+    private var sleepMenu: some View {
+        Menu {
+            Picker("Таймер сна", selection: Binding(get: { player.sleep }, set: { player.sleep = $0 })) {
+                Text("Выкл").tag(SleepOption.off)
+                Text("15 мин").tag(SleepOption.minutes(15))
+                Text("30 мин").tag(SleepOption.minutes(30))
+                Text("60 мин").tag(SleepOption.minutes(60))
+                Text("До конца трека").tag(SleepOption.endOfTrack)
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "moon.zzz")
+                // Раз в секунду пересчитываем остаток до паузы.
+                if let deadline = player.sleepDeadline {
+                    TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                        let left = max(0, Int(deadline.timeIntervalSince(ctx.date).rounded(.up)))
+                        Text(String(format: "%d:%02d", left / 60, left % 60)).monospacedDigit()
+                    }
+                }
+            }
+            .font(.callout)
+            .foregroundStyle(player.sleep == .off ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.accentColor))
+        }
+        .accessibilityLabel("Таймер сна")
     }
 
     /// «1,25×»: запятая по-русски, без хвостовых нулей.
