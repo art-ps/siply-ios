@@ -388,4 +388,102 @@ final class PlayerModelTests: XCTestCase {
         XCTAssertEqual(engine.loaded, [tracks[1].url])   // не перезагружен
         XCTAssertEqual(player.sleep, .off)
     }
+
+    // MARK: - Продолжение после перезапуска
+
+    private func state() -> PlaybackState? {
+        defaults.data(forKey: "playback").flatMap { try? JSONDecoder().decode(PlaybackState.self, from: $0) }
+    }
+
+    func testPauseSeekAndTrackChangePersistState() throws {
+        XCTAssertNil(state())
+        player.play(queue: tracks, startingAt: 1)
+        engine.currentTime = 17
+        player.seek(to: 17)
+        player.togglePlayPause()
+        let s = try XCTUnwrap(state())
+        XCTAssertEqual(s.urls, tracks.map(\.url.path))
+        XCTAssertEqual(s.currentIndex, 1)
+        XCTAssertEqual(s.position, 17)
+    }
+
+    func testTickPersistsEveryFiveSeconds() {
+        player.play(queue: tracks, startingAt: 0)
+        engine.currentTime = 3; player.tick(now: Date())
+        XCTAssertEqual(state()?.position, 0)        // смена трека сохранила 0, тик в 3 с — ещё нет
+        engine.currentTime = 6; player.tick(now: Date())
+        XCTAssertEqual(state()?.position, 6)
+    }
+
+    func testRestoreRebuildsQueuePausedAtPosition() async {
+        player.play(queue: tracks, startingAt: 1)
+        engine.currentTime = 17; player.seek(to: 17); player.togglePlayPause()
+        let engine2 = FakeAudioEngine()
+        let player2 = PlayerModel(engine: engine2, downloader: downloader, defaults: defaults)
+        let loader = FakeTrackLoader(); for t in tracks { loader.tracks[t.url] = t }
+        await player2.restore(using: loader)
+        XCTAssertEqual(player2.queue, tracks)
+        XCTAssertEqual(player2.currentTrack, tracks[1])
+        XCTAssertEqual(player2.currentTime, 17)
+        XCTAssertEqual(engine2.currentTime, 17)
+        XCTAssertEqual(engine2.loaded, [tracks[1].url])
+        XCTAssertFalse(engine2.playing)
+        XCTAssertFalse(player2.isPlaying)
+    }
+
+    func testRestoreDropsMissingFilesAndGivesUpWithoutCurrent() async {
+        player.play(queue: tracks, startingAt: 1); player.togglePlayPause()
+        // текущего нет → пусто, ключ остаётся
+        var player2 = PlayerModel(engine: FakeAudioEngine(), downloader: downloader, defaults: defaults)
+        let loader = FakeTrackLoader(); loader.tracks[tracks[0].url] = tracks[0]
+        await player2.restore(using: loader)
+        XCTAssertNil(player2.currentTrack); XCTAssertTrue(player2.queue.isEmpty)
+        XCTAssertNotNil(state())
+        // нет третьего → очередь без него
+        loader.tracks[tracks[1].url] = tracks[1]; loader.tracks[tracks[3].url] = tracks[3]
+        player2 = PlayerModel(engine: FakeAudioEngine(), downloader: downloader, defaults: defaults)
+        await player2.restore(using: loader)
+        XCTAssertEqual(player2.queue, [tracks[0], tracks[1], tracks[3]])
+        XCTAssertEqual(player2.currentTrack, tracks[1])
+    }
+
+    func testRestoreRemoteCurrentDownloadsOnPlay() async {
+        player.play(queue: tracks, startingAt: 1)
+        engine.currentTime = 17; player.seek(to: 17); player.togglePlayPause()
+        let engine2 = FakeAudioEngine()
+        let player2 = PlayerModel(engine: engine2, downloader: downloader, defaults: defaults)
+        let loader = FakeTrackLoader(); for t in tracks { loader.tracks[t.url] = t }
+        remote(1); loader.tracks[tracks[1].url] = tracks[1]
+        await player2.restore(using: loader)
+        XCTAssertEqual(player2.currentTrack?.url, tracks[1].url)
+        XCTAssertTrue(engine2.loaded.isEmpty)
+        XCTAssertEqual(player2.currentTime, 0)
+        player2.togglePlayPause()
+        XCTAssertEqual(downloader.requested, [tracks[1].url])
+        downloader.complete(tracks[1].url); await settle()
+        XCTAssertEqual(engine2.loaded, [tracks[1].url]); XCTAssertTrue(engine2.playing)
+    }
+
+    func testRestoreWithUnloadableCurrentKeepsQueue() async {
+        player.play(queue: tracks, startingAt: 1); player.togglePlayPause()
+        let engine2 = FakeAudioEngine(); engine2.failing = [tracks[1].url]
+        let player2 = PlayerModel(engine: engine2, downloader: downloader, defaults: defaults)
+        let loader = FakeTrackLoader(); for t in tracks { loader.tracks[t.url] = t }
+        await player2.restore(using: loader)
+        XCTAssertEqual(player2.currentTrack, tracks[1]); XCTAssertEqual(player2.currentTime, 0)
+        player2.togglePlayPause()                         // обычный путь: битый пропущен, играет следующий
+        XCTAssertEqual(engine2.loaded, [tracks[2].url])
+    }
+
+    func testPersistDuringDownloadStoresZeroPosition() {
+        player.play(queue: tracks, startingAt: 0)
+        engine.currentTime = 40
+        remote(1); player.play(queue: tracks, startingAt: 1)   // playAfterDownload
+        XCTAssertEqual(state()?.currentIndex, 1); XCTAssertEqual(state()?.position, 0)
+    }
+
+    func testPersistIsNoopOnEmptyQueue() {
+        player.persist()
+        XCTAssertNil(state())
+    }
 }

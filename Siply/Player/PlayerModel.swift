@@ -57,12 +57,15 @@ final class PlayerModel {
     @ObservationIgnored private var downloads: [URL: Task<Bool, Never>] = [:]
     /// Ожидание загрузки текущего трека; новый выбор трека его отменяет.
     @ObservationIgnored private var downloadTask: Task<Void, Never>?
+    /// Позиция последнего сохранения: тик пишет, когда уехали на 5 с.
+    @ObservationIgnored private var lastPersistedAt: TimeInterval = -5
 
     private enum Keys {
         static let volume = "volume"
         static let rate = "rate"
         static let shuffle = "shuffle"
         static let repeatMode = "repeatMode"
+        static let playback = "playback"
     }
 
     init(engine: AudioEngine, downloader: Downloader = FileDownloader(), defaults: UserDefaults = .standard) {
@@ -109,9 +112,10 @@ final class PlayerModel {
             engine.pause()
             isPlaying = false
             stopTimer()
-        } else if queue[cur].download != .local {
-            // Загрузка не удалась — в движке старый трек; качаем заново.
-            _ = playTrack(cur)
+            persist()
+        } else if queue[cur].download != .local || !didLoad {
+            // Загрузка не удалась или после перезапуска не открылся — в движке старый трек; заново.
+            if !playTrack(cur) { step(by: 1, wrap: true) }
         } else {
             startPlaying()
         }
@@ -129,6 +133,7 @@ final class PlayerModel {
     func seek(to time: TimeInterval) {
         engine.currentTime = time
         currentTime = time
+        persist()
     }
 
     func cycleRepeat() {
@@ -175,6 +180,7 @@ final class PlayerModel {
         }
         guard load(idx) else { return false }
         currentIndex = idx
+        persist()
         startPlaying()
         return true
     }
@@ -189,6 +195,7 @@ final class PlayerModel {
         stopTimer()
         currentTime = 0
         isDownloading = true
+        persist()
         let fetching = fetch(queue[idx].url)
         downloadTask = Task {
             let ok = await fetching.value
@@ -270,6 +277,7 @@ final class PlayerModel {
         currentTime = 0
         isPlaying = false
         stopTimer()
+        persist()
     }
 
     private func rebuildOrder() {
@@ -291,9 +299,52 @@ final class PlayerModel {
     /// Тик таймера: прогресс и срок таймера сна.
     func tick(now: Date) {
         currentTime = engine.currentTime
+        if abs(currentTime - lastPersistedAt) >= 5 { persist() }
         if let deadline = sleepDeadline, now >= deadline, isPlaying {
             togglePlayPause()
             sleep = .off
+        }
+    }
+
+    /// Сохранить очередь и позицию; зовёт и RootView при уходе в фон.
+    func persist() {
+        guard let cur = currentIndex, !queue.isEmpty else { return }
+        // Пока качается — позиция в движке чужая.
+        let state = PlaybackState(urls: queue.map(\.url.path), currentIndex: cur, position: isDownloading ? 0 : currentTime)
+        guard let data = try? JSONEncoder().encode(state) else { return }
+        defaults.set(data, forKey: Keys.playback)
+        lastPersistedAt = currentTime
+    }
+
+    /// Поднять очередь после перезапуска: на паузе, на сохранённой позиции. Нет текущего файла — ничего не делаем.
+    func restore(using loader: TrackLoader) async {
+        guard let data = defaults.data(forKey: Keys.playback),
+              let state = try? JSONDecoder().decode(PlaybackState.self, from: data),
+              state.urls.indices.contains(state.currentIndex) else { return }
+        let loaded = await withTaskGroup(of: (Int, Track?).self) { group in
+            for (i, path) in state.urls.enumerated() {
+                group.addTask { (i, await loader.track(at: URL(fileURLWithPath: path))) }
+            }
+            var result = [Track?](repeating: nil, count: state.urls.count)
+            for await (i, t) in group { result[i] = t }
+            return result
+        }
+        guard loaded[state.currentIndex] != nil else { return }
+        // Индекс текущего сдвигается на число пропавших перед ним.
+        let cur = loaded[..<state.currentIndex].compactMap { $0 }.count
+        queue = loaded.compactMap { $0 }
+        currentIndex = cur
+        rebuildOrder()
+        isPlaying = false
+        isDownloading = false
+        didLoad = false
+        currentTime = 0
+        if queue[cur].download == .local, load(cur) {
+            engine.currentTime = state.position
+            currentTime = state.position
+        } else {
+            currentTime = 0
+            didLoad = false
         }
     }
 

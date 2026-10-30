@@ -18,5 +18,7 @@ final class AppModel {
         search = SearchIndex(store: store)
         nowPlaying = NowPlaying(player: player)
         session = AudioSession(player: player)
+        // Закладки SourceStore уже подняты в его init — файлы доступны.
+        Task { await player.restore(using: FileTrackLoader()) }
     }
 }

@@ -18,6 +18,7 @@ struct SiplyApp: App {
 struct RootView: View {
     @Environment(SourceStore.self) private var store
     @Environment(PlayerModel.self) private var player
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         TabView {
@@ -26,6 +27,9 @@ struct RootView: View {
         }
         .tabViewBottomAccessory(isEnabled: player.currentTrack != nil) { MiniPlayer() }
         .tabBarMinimizeBehavior(.onScrollDown)
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { player.persist() }
+        }
         .onOpenURL { url in
             // nil — экран не меняется
             Task { store.pendingRoute = await FileOpener.open(url, store: store, player: player) }
