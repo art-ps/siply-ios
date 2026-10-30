@@ -3,12 +3,14 @@ import SwiftUI
 /// Корневой экран: список источников музыки.
 struct SourcesView: View {
     @Environment(SourceStore.self) private var store
+    @Environment(\.scenePhase) private var scenePhase
     @State private var path: [FolderRoute] = []
     @State private var showPicker = false
 
     var body: some View {
         NavigationStack(path: $path) {
             List {
+                let _ = store.revision   // перерисовка после refresh(): доступность читается с диска
                 ForEach(store.sources) { source in
                     row(for: source)
                         .deleteDisabled(source.kind == .appFolder)
@@ -19,8 +21,12 @@ struct SourcesView: View {
                 }
             }
             .navigationTitle("Источники")
+            .refreshable { store.refresh() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { store.refresh() }
+            }
             .navigationDestination(for: FolderRoute.self) { route in
-                FolderView(folder: route.folder, source: route.source)
+                FolderView(folder: route.folder, source: route.source, autoDownload: route.autoDownload)
             }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -53,6 +59,8 @@ struct SourcesView: View {
         } else {
             label(for: source, icon: "externaldrive", subtitle: "Не подключена")   // отключённый диск
                 .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
+                .onTapGesture { store.refresh() }   // вставили флешку — тап проверяет снова
         }
     }
 

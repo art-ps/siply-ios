@@ -216,6 +216,32 @@ final class PlayerModelTests: XCTestCase {
         XCTAssertEqual(player.currentTrack?.download, .local)
     }
 
+    func testOnDemandTrackIsFetchedBeforePlay() async {
+        tracks[0].download = .onDemand
+        player.play(queue: tracks, startingAt: 0)
+        XCTAssertEqual(downloader.requested, [tracks[0].url])
+        XCTAssertTrue(engine.loaded.isEmpty)
+        downloader.complete(tracks[0].url)
+        await settle()
+        XCTAssertEqual(engine.loaded, [tracks[0].url])
+        XCTAssertTrue(player.isPlaying)
+        XCTAssertEqual(player.currentTrack?.download, .local)
+    }
+
+    func testOnDemandFetchFailureKeepsOnDemand() async {
+        tracks[0].download = .onDemand
+        downloader.failing = [tracks[0].url]
+        player.play(queue: tracks, startingAt: 0)
+        await settle()
+        XCTAssertEqual(player.currentTrack?.download, .onDemand, "строка не сереет после сбоя провайдера")
+    }
+
+    func testPrefetchesNextOnDemand() {
+        tracks[2].download = .onDemand
+        player.play(queue: tracks, startingAt: 1)
+        XCTAssertEqual(downloader.requested, [tracks[2].url])
+    }
+
     func testPlayingPrefetchesNextRemote() {
         remote(2)
         player.play(queue: tracks, startingAt: 1)

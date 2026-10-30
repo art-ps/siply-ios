@@ -9,13 +9,19 @@ struct Source: Identifiable, Hashable, Codable {
 }
 
 /// Куда навигировать: папка внутри источника. Используется NavigationStack, поиском и FileOpener.
-struct FolderRoute: Hashable { let folder: URL; let source: Source }
+struct FolderRoute: Hashable {
+    let folder: URL
+    let source: Source
+    var autoDownload: Bool = false   // из серой подпапки: FolderView сразу ставит её файлы на загрузку
+}
 
 /// Список источников: своя папка приложения (всегда первая) + папки пользователя по bookmark'ам.
 @MainActor @Observable
 final class SourceStore {
     private(set) var sources: [Source]
     var pendingRoute: FolderRoute?   // просьба открыть папку (из onOpenURL); SourcesView забирает и обнуляет
+    /// Растёт на каждый refresh(): доступность читается с диска, наблюдать больше нечего.
+    private(set) var revision = 0
 
     private let defaults: UserDefaults
     private let appFolder: URL
@@ -50,6 +56,12 @@ final class SourceStore {
         sources.removeAll { $0.id == source.id }
         resolved[source.id] = nil
         save()
+    }
+
+    /// Флешку вставили обратно — заново разрешаем bookmark'и; без перезапуска приложения.
+    func refresh() {
+        for source in sources { restore(source) }
+        revision += 1
     }
 
     func url(of source: Source) -> URL? {
@@ -96,7 +108,7 @@ final class SourceStore {
 }
 
 extension Source {
-    /// Теги по запросу: внешние источники и iCloud — чтобы провайдер не качал файлы целиком.
+    /// Теги по запросу: не своя папка и не iCloud (SMB, Яндекс.Диск, флешка) — чтобы провайдер не качал файлы целиком.
     func tagsOnDemand(for folder: URL) -> Bool {
         kind != .appFolder && (try? folder.resourceValues(forKeys: [.isUbiquitousItemKey]).isUbiquitousItem) != true
     }

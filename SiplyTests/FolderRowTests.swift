@@ -12,5 +12,6 @@ final class FolderRowTests: XCTestCase {
         XCTAssertTrue(FolderRowState.isDimmed(tracks: [track("a", .local), track("b", .remote)]))
         XCTAssertFalse(FolderRowState.isDimmed(tracks: [track("a", .local), track("b", .local)]))
         XCTAssertFalse(FolderRowState.isDimmed(tracks: []))
+        XCTAssertFalse(FolderRowState.isDimmed(tracks: [track("a", .onDemand)]))
     }
 }

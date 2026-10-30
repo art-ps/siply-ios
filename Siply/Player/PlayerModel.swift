@@ -134,7 +134,7 @@ final class PlayerModel {
         halt()
     }
 
-    /// Сделать idx текущим и играть: локальный — сразу, удалённый — после загрузки.
+    /// Сделать idx текущим и играть: локальный — сразу, удалённый и .onDemand — после загрузки.
     /// false — локальный не открылся, текущий не меняется.
     private func playTrack(_ idx: Int) -> Bool {
         downloadTask?.cancel()
@@ -150,7 +150,7 @@ final class PlayerModel {
         return true
     }
 
-    /// Звука нет, пока трек не скачан; ошибка — плеер стоит, трек остаётся .remote.
+    /// Звука нет, пока трек не скачан; ошибка — плеер стоит, трек остаётся .remote / .onDemand.
     private func playAfterDownload(_ idx: Int) {
         currentIndex = idx
         // Как halt(): позиция старого трека не должна влиять на previous() и прогресс.
@@ -180,12 +180,14 @@ final class PlayerModel {
             next = 0
         }
         let track = queue[order[next]]
-        if track.download == .remote { _ = fetch(track.url) }
+        if track.download == .remote || track.download == .onDemand { _ = fetch(track.url) }
     }
 
     /// Загрузка url; уже идущую не дублируем. Состояние в очереди — по url, индексы могли смениться.
     private func fetch(_ url: URL) -> Task<Bool, Never> {
         if let task = downloads[url] { return task }
+        // Сбой вернёт прежнее состояние: .onDemand не должен посереть
+        let before = queue.first { $0.url == url }?.download == .onDemand ? DownloadState.onDemand : .remote
         setDownload(.downloading, for: url)
         // immediate — запрос уходит синхронно, до возврата из play/next.
         let task = Task.immediate {
@@ -198,7 +200,7 @@ final class PlayerModel {
                 if !(error is CancellationError) {
                     NSLog("Siply: не удалось скачать %@: %@", url.lastPathComponent, "\(error)")
                 }
-                setDownload(.remote, for: url)
+                setDownload(before, for: url)
                 return false
             }
         }

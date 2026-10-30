@@ -45,6 +45,18 @@ final class FileOpenerTests: XCTestCase {
         XCTAssertEqual(player.currentTrack?.url.lastPathComponent, "02 B.wav")
     }
 
+    func testOpenMatchesPrivateSymlinkPrefix() async throws {
+        // На устройстве /var — симлинк на /private/var, в середине пути; здесь та же ситуация через свой симлинк
+        let other = TempDir()
+        let link = other.url.appendingPathComponent("link")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: dir.url.deletingLastPathComponent())
+        let file = link.appendingPathComponent(dir.url.lastPathComponent).appendingPathComponent("02 B.wav")
+        let route = await FileOpener.open(file, store: store, player: player)
+        XCTAssertEqual(player.queue.count, 3)
+        XCTAssertEqual(player.currentTrack?.url.lastPathComponent, "02 B.wav")
+        XCTAssertEqual(route?.source, store.sources[0])
+    }
+
     func testAppDeclaresAudioDocumentTypes() {
         let types = (Bundle.main.infoDictionary?["CFBundleDocumentTypes"] as? [[String: Any]]) ?? []
         let utis = Set(types.flatMap { $0["LSItemContentTypes"] as? [String] ?? [] })

@@ -80,4 +80,17 @@ final class SourceStoreTests: XCTestCase {
         XCTAssertEqual(store.sources.count, 2)
         XCTAssertFalse(store.isAvailable(store.sources[1]))
     }
+
+    func testRefreshRecoversFolderThatReappeared() throws {
+        let music = tmp.dir("Music")
+        makeStore().add(folder: music)
+        try FileManager.default.removeItem(at: music)
+        let store = makeStore()   // запуск с вытащенной флешкой: bookmark не разрешился
+        XCTAssertFalse(store.isAvailable(store.sources[1]))
+        try FileManager.default.createDirectory(at: music, withIntermediateDirectories: true)
+        let revision = store.revision
+        store.refresh()
+        XCTAssertTrue(store.isAvailable(store.sources[1]))
+        XCTAssertEqual(store.revision, revision + 1)
+    }
 }

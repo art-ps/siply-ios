@@ -21,7 +21,7 @@ struct TrackRow: View {
             switch track.download {
             case .remote: Image(systemName: "icloud.and.arrow.down")
             case .downloading: ProgressView().controlSize(.small)
-            case .local: EmptyView()
+            case .local, .onDemand: EmptyView()
             }
             if track.duration > 0 {
                 Text(track.duration.mmss).font(.caption).foregroundStyle(.secondary).monospacedDigit()

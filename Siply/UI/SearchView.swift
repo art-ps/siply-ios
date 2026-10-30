@@ -40,12 +40,14 @@ struct SearchView: View {
             }
             .navigationTitle("Поиск")
             .searchable(text: $query, prompt: "Файлы и папки")
-            .navigationDestination(for: FolderRoute.self) { FolderView(folder: $0.folder, source: $0.source) }
+            .navigationDestination(for: FolderRoute.self) { FolderView(folder: $0.folder, source: $0.source, autoDownload: $0.autoDownload) }
             .task(id: query) {
                 // debounce: смена запроса отменяет задачу до search
                 try? await Task.sleep(for: .milliseconds(300))
                 guard !Task.isCancelled else { return }
-                hits = await index.search(query)
+                let found = await index.search(query)
+                guard !Task.isCancelled else { return }   // запрос сменился, пока искали
+                hits = found
             }
             .refreshable {
                 index.invalidate()
@@ -61,13 +63,24 @@ struct SearchView: View {
                 Label(hit.url.lastPathComponent, systemImage: "folder")
             }
         } else {
-            TrackRow(track: Track(url: hit.url), isCurrent: player.currentTrack?.url == hit.url) {
+            TrackRow(track: track(for: hit), isCurrent: player.currentTrack?.url == hit.url) {
                 // очередь — треки-хиты этого источника, теги не читаем
                 let tracks = sectionHits.filter { !$0.isFolder }
                 if let i = tracks.firstIndex(of: hit) {
-                    player.play(queue: tracks.map { Track(url: $0.url) }, startingAt: i)
+                    player.play(queue: tracks.map(track(for:)), startingAt: i)
                 }
             }
         }
+    }
+
+    /// Трек по имени файла с реальным статусом: нескачанное серое, плеер его докачает.
+    private func track(for hit: SearchHit) -> Track {
+        var t = Track(url: hit.url)
+        t.download = DownloadState.of(hit.url)
+        // как в LibraryScanner: .remote важнее, провайдер без iCloud-статуса — .onDemand
+        if t.download == .local, hit.source.tagsOnDemand(for: hit.url.deletingLastPathComponent()) {
+            t.download = .onDemand
+        }
+        return t
     }
 }

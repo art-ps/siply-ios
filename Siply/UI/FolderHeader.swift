@@ -18,17 +18,29 @@ struct FolderHeader: View {
                 }
             }
             HStack {
+                // В одну строку и поровну по ширине: «Воспроизвести» иначе переносится и теряет иконку
                 Button(action: play) {
-                    Label("Воспроизвести", systemImage: "play.fill").frame(maxWidth: .infinity)
+                    buttonLabel("Воспроизвести", icon: "play.fill")
                 }
                 .buttonStyle(.borderedProminent)
+                .frame(maxWidth: .infinity)
                 Button(action: shuffle) {
-                    Label("Перемешать", systemImage: "shuffle").frame(maxWidth: .infinity)
+                    buttonLabel("Перемешать", icon: "shuffle")
                 }
                 .buttonStyle(.bordered)
+                .frame(maxWidth: .infinity)
             }
             .disabled(tracks.isEmpty)
         }
+    }
+
+    /// Иконка и текст явно: Label при сжатии теряет иконку
+    private func buttonLabel(_ title: String, icon: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+            Text(title).lineLimit(1).minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     /// Длительность неизвестна (теги по запросу) — только число треков.

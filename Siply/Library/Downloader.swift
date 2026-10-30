@@ -31,11 +31,15 @@ final class FileDownloader: Downloader {
 
         if (try? url.resourceValues(forKeys: [.isUbiquitousItemKey]).isUbiquitousItem) == true {
             try FileManager.default.startDownloadingUbiquitousItem(at: url)
-            while DownloadState.of(url) != .local {
+            while true {
+                // NSURL кэширует атрибуты — без сброса статус навсегда остался бы .notDownloaded.
+                var u = url
+                u.removeAllCachedResourceValues()
                 // iCloud не справился (офлайн, файл удалён) — иначе строка висела бы в .downloading вечно.
-                if let error = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingErrorKey]).ubiquitousItemDownloadingError {
+                if let error = try? u.resourceValues(forKeys: [.ubiquitousItemDownloadingErrorKey]).ubiquitousItemDownloadingError {
                     throw error
                 }
+                if DownloadState.of(u) == .local { break }
                 try await Task.sleep(for: .milliseconds(500))
             }
         } else {

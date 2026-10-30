@@ -109,7 +109,11 @@ enum LibraryScanner {
                         track.download = .remote
                         return track
                     }
-                    if tagsOnDemand { return Track(url: url) }
+                    if tagsOnDemand {
+                        var track = Track(url: url)
+                        track.download = .onDemand
+                        return track
+                    }
                     return await isPlayable(url) ? await loadTrack(url) : nil
                 }
             }

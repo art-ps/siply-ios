@@ -67,7 +67,7 @@ final class LibraryScannerTests: XCTestCase {
         XCTAssertEqual(a.title, "01 A")
         XCTAssertNil(a.artwork)
         XCTAssertEqual(a.duration, 0)
-        XCTAssertTrue(tracks.allSatisfy { $0.download == .local })
+        XCTAssertTrue(tracks.allSatisfy { $0.download == .onDemand })
     }
 
     func testDefaultStillFiltersUnplayable() async throws {

@@ -11,8 +11,8 @@ final class AudioSession {
     init(player: PlayerModel) {
         self.player = player
         let session = AVAudioSession.sharedInstance()
+        // setActive не зовём: на запуске это оборвало бы чужой звук; play() активирует сессию сам.
         try? session.setCategory(.playback, mode: .default)
-        try? session.setActive(true)
         let center = NotificationCenter.default
         tokens.append(center.addObserver(forName: AVAudioSession.interruptionNotification,
                                          object: session, queue: .main) { [weak self] note in
@@ -33,7 +33,10 @@ final class AudioSession {
             wasPlaying = player.isPlaying
             if wasPlaying { player.togglePlayPause() }
         case .ended:
-            if options.contains(.shouldResume), wasPlaying { player.togglePlayPause() }
+            if options.contains(.shouldResume), wasPlaying {
+                try? AVAudioSession.sharedInstance().setActive(true)
+                player.togglePlayPause()
+            }
             wasPlaying = false
         default: break
         }
