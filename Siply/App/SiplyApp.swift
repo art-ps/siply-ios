@@ -6,7 +6,7 @@ struct SiplyApp: App {
 
     var body: some Scene {
         WindowGroup {
-            Text("Siply")
+            SourcesView()
                 .environment(model.store)
                 .environment(model.player)
                 .environment(model.search)
