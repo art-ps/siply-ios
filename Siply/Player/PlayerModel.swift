@@ -13,6 +13,8 @@ final class PlayerModel {
     private(set) var currentIndex: Int?
     private(set) var isPlaying = false
     private(set) var currentTime: TimeInterval = 0
+    /// Текущий трек качается, звука ещё нет — для индикатора в мини-плеере.
+    private(set) var isDownloading = false
 
     var duration: TimeInterval { engine.duration }
     var currentTrack: Track? { currentIndex.map { queue[$0] } }
@@ -28,12 +30,17 @@ final class PlayerModel {
     }
 
     @ObservationIgnored private let engine: AudioEngine
+    @ObservationIgnored private let downloader: Downloader
     @ObservationIgnored private let defaults: UserDefaults
     /// Порядок обхода индексов queue: прямой или перемешанный (текущий — первым).
     @ObservationIgnored private var order: [Int] = []
     @ObservationIgnored private var timer: Timer?
     /// Удалась ли хоть одна загрузка с начала последнего play(queue:startingAt:).
     @ObservationIgnored private var didLoad = false
+    /// Загрузки в полёте по url: один url не качаем дважды. true — скачан.
+    @ObservationIgnored private var downloads: [URL: Task<Bool, Never>] = [:]
+    /// Ожидание загрузки текущего трека; новый выбор трека его отменяет.
+    @ObservationIgnored private var downloadTask: Task<Void, Never>?
 
     private enum Keys {
         static let volume = "volume"
@@ -41,8 +48,9 @@ final class PlayerModel {
         static let repeatMode = "repeatMode"
     }
 
-    init(engine: AudioEngine, defaults: UserDefaults = .standard) {
+    init(engine: AudioEngine, downloader: Downloader = FileDownloader(), defaults: UserDefaults = .standard) {
         self.engine = engine
+        self.downloader = downloader
         self.defaults = defaults
         volume = defaults.object(forKey: Keys.volume) as? Float ?? 1
         shuffle = defaults.bool(forKey: Keys.shuffle)
@@ -59,9 +67,7 @@ final class PlayerModel {
         currentIndex = index
         rebuildOrder()
         didLoad = false
-        if load(index) {
-            startPlaying()
-        } else {
+        if !playTrack(index) {
             step(by: 1, wrap: true)
             // Ни один трек не открылся — указывать не на что, движок держит старый трек.
             if !didLoad { currentIndex = nil }
@@ -69,7 +75,8 @@ final class PlayerModel {
     }
 
     func togglePlayPause() {
-        guard currentIndex != nil else { return }
+        // Пока качается — в движке старый трек, играть нечего.
+        guard currentIndex != nil, !isDownloading else { return }
         if isPlaying {
             engine.pause()
             isPlaying = false
@@ -98,13 +105,13 @@ final class PlayerModel {
         repeatMode = all[(all.firstIndex(of: repeatMode)! + 1) % all.count]
     }
 
+    /// Файл скачан (например, тапом по строке) — отметить во всей очереди.
+    func markDownloaded(_ url: URL) { setDownload(.local, for: url) }
+
     // MARK: - Внутреннее
 
     private func trackFinished() {
-        if repeatMode == .one, let i = currentIndex, load(i) {
-            startPlaying()
-            return
-        }
+        if repeatMode == .one, let i = currentIndex, playTrack(i) { return }
         step(by: 1, wrap: repeatMode == .all)
     }
 
@@ -118,14 +125,86 @@ final class PlayerModel {
                 guard wrap else { halt(); return }
                 pos = (pos + order.count) % order.count
             }
-            let idx = order[pos]
-            if load(idx) {
-                currentIndex = idx
-                startPlaying()
-                return
-            }
+            if playTrack(order[pos]) { return }
         }
         halt()
+    }
+
+    /// Сделать idx текущим и играть: локальный — сразу, удалённый — после загрузки.
+    /// false — локальный не открылся, текущий не меняется.
+    private func playTrack(_ idx: Int) -> Bool {
+        downloadTask?.cancel()
+        downloadTask = nil
+        isDownloading = false
+        if queue[idx].download != .local {
+            playAfterDownload(idx)
+            return true
+        }
+        guard load(idx) else { return false }
+        currentIndex = idx
+        startPlaying()
+        return true
+    }
+
+    /// Звука нет, пока трек не скачан; ошибка — плеер стоит, трек остаётся .remote.
+    private func playAfterDownload(_ idx: Int) {
+        currentIndex = idx
+        engine.pause()
+        isPlaying = false
+        stopTimer()
+        currentTime = 0
+        isDownloading = true
+        let fetching = fetch(queue[idx].url)
+        downloadTask = Task {
+            let ok = await fetching.value
+            // Отменили — состоянием уже владеет новый выбор трека.
+            guard !Task.isCancelled else { return }
+            isDownloading = false
+            guard ok else { return }
+            if load(idx) { startPlaying() } else { step(by: 1, wrap: true) }
+        }
+    }
+
+    /// Пока играет — качаем следующий по order: между треками iOS усыпит приложение.
+    private func prefetchNext() {
+        guard let cur = currentIndex, let pos = order.firstIndex(of: cur) else { return }
+        var next = pos + 1
+        if next == order.count {
+            guard repeatMode == .all else { return }
+            next = 0
+        }
+        let track = queue[order[next]]
+        if track.download == .remote { _ = fetch(track.url) }
+    }
+
+    /// Загрузка url; уже идущую не дублируем. Состояние в очереди — по url, индексы могли смениться.
+    private func fetch(_ url: URL) -> Task<Bool, Never> {
+        if let task = downloads[url] { return task }
+        setDownload(.downloading, for: url)
+        // immediate — запрос уходит синхронно, до возврата из play/next.
+        let task = Task.immediate {
+            defer { downloads[url] = nil }
+            do {
+                try await downloader.download(url)
+                setDownload(.local, for: url)
+                return true
+            } catch {
+                if !(error is CancellationError) {
+                    NSLog("Siply: не удалось скачать %@: %@", url.lastPathComponent, "\(error)")
+                }
+                setDownload(.remote, for: url)
+                return false
+            }
+        }
+        // Ошибка могла прийти синхронно — задача уже завершена, не запоминаем.
+        if queue.contains(where: { $0.url == url && $0.download == .downloading }) {
+            downloads[url] = task
+        }
+        return task
+    }
+
+    private func setDownload(_ state: DownloadState, for url: URL) {
+        for i in queue.indices where queue[i].url == url { queue[i].download = state }
     }
 
     private func load(_ idx: Int) -> Bool {
@@ -144,6 +223,7 @@ final class PlayerModel {
         engine.play()
         isPlaying = true
         startTimer()
+        prefetchNext()
     }
 
     /// Конец очереди: остаёмся на текущем треке, в начале, на паузе.

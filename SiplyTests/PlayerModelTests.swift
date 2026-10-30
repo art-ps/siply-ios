@@ -6,14 +6,28 @@ final class PlayerModelTests: XCTestCase {
     private var engine: FakeAudioEngine!
     private var player: PlayerModel!
     private var defaults: UserDefaults!
-    private let tracks = (1...4).map { Track(url: URL(fileURLWithPath: "/m/\($0).mp3")) }
+    private var downloader: FakeDownloader!
+    private var tracks = (1...4).map { Track(url: URL(fileURLWithPath: "/m/\($0).mp3")) }
 
     override func setUp() {
         super.setUp()
         defaults = UserDefaults(suiteName: "SiplyPlayerModelTests")!
         defaults.removePersistentDomain(forName: "SiplyPlayerModelTests")
         engine = FakeAudioEngine()
-        player = PlayerModel(engine: engine, defaults: defaults)
+        downloader = FakeDownloader()
+        player = PlayerModel(engine: engine, downloader: downloader, defaults: defaults)
+    }
+
+    override func tearDown() {
+        // Висящие загрузки отпускаем — иначе continuation утечёт.
+        downloader.requested.forEach(downloader.complete)
+        super.tearDown()
+    }
+
+    private func remote(_ i: Int) { tracks[i].download = .remote }
+
+    private func settle() async {
+        for _ in 0..<3 { await Task.yield() }
     }
 
     func testPlayLoadsAndPlaysChosenTrack() {
@@ -184,5 +198,69 @@ final class PlayerModelTests: XCTestCase {
         XCTAssertEqual(player.volume, 1)
         player.volume = 0.5
         XCTAssertEqual(engine.volume, 0.5)
+    }
+
+    // MARK: - Скачивание
+
+    func testPlayRemoteTrackDownloadsThenPlays() async {
+        remote(0)
+        player.play(queue: tracks, startingAt: 0)
+        XCTAssertTrue(engine.loaded.isEmpty)
+        XCTAssertTrue(player.isDownloading)
+        XCTAssertEqual(downloader.requested, [tracks[0].url])
+        downloader.complete(tracks[0].url)
+        await settle()
+        XCTAssertEqual(engine.loaded, [tracks[0].url])
+        XCTAssertTrue(player.isPlaying)
+        XCTAssertFalse(player.isDownloading)
+        XCTAssertEqual(player.currentTrack?.download, .local)
+    }
+
+    func testPlayingPrefetchesNextRemote() {
+        remote(2)
+        player.play(queue: tracks, startingAt: 1)
+        XCTAssertEqual(downloader.requested, [tracks[2].url])
+        XCTAssertEqual(engine.loaded, [tracks[1].url])
+    }
+
+    func testPrefetchOnlyOneAhead() {
+        remote(2); remote(3)
+        player.play(queue: tracks, startingAt: 1)
+        XCTAssertEqual(downloader.requested, [tracks[2].url])
+    }
+
+    func testNextToRemoteWaitsForDownload() async {
+        remote(1)
+        player.play(queue: tracks, startingAt: 0)
+        XCTAssertEqual(downloader.requested, [tracks[1].url])
+        player.next()
+        XCTAssertEqual(engine.loaded, [tracks[0].url])
+        XCTAssertTrue(player.isDownloading)
+        downloader.complete(tracks[1].url)
+        await settle()
+        XCTAssertEqual(engine.loaded, [tracks[0].url, tracks[1].url])
+        XCTAssertTrue(player.isPlaying)
+        XCTAssertEqual(downloader.requested, [tracks[1].url], "префетч не дублируется")
+    }
+
+    func testDownloadFailureLeavesTrackRemoteAndPlayerIdle() async {
+        remote(0)
+        downloader.failing = [tracks[0].url]
+        player.play(queue: tracks, startingAt: 0)
+        await settle()
+        XCTAssertFalse(player.isDownloading)
+        XCTAssertFalse(player.isPlaying)
+        XCTAssertEqual(player.currentTrack?.download, .remote)
+        XCTAssertTrue(engine.loaded.isEmpty)
+        player.next()
+        XCTAssertEqual(engine.loaded, [tracks[1].url])
+        XCTAssertTrue(player.isPlaying)
+    }
+
+    func testMarkDownloadedUpdatesQueue() {
+        remote(2)
+        player.play(queue: tracks, startingAt: 0)
+        player.markDownloaded(tracks[2].url)
+        XCTAssertEqual(player.queue[2].download, .local)
     }
 }
