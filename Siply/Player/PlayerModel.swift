@@ -329,7 +329,8 @@ final class PlayerModel {
             for await (i, t) in group { result[i] = t }
             return result
         }
-        guard loaded[state.currentIndex] != nil else { return }
+        // Пока грузили файлы, пользователь уже выбрал трек — его выбор главнее.
+        guard currentIndex == nil, loaded[state.currentIndex] != nil else { return }
         // Индекс текущего сдвигается на число пропавших перед ним.
         let cur = loaded[..<state.currentIndex].compactMap { $0 }.count
         queue = loaded.compactMap { $0 }

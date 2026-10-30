@@ -486,4 +486,20 @@ final class PlayerModelTests: XCTestCase {
         player.persist()
         XCTAssertNil(state())
     }
+
+    func testRestoreDoesNotOverrideTrackChosenWhileLoading() async {
+        player.play(queue: tracks, startingAt: 1); player.togglePlayPause()
+        let engine2 = FakeAudioEngine()
+        let player2 = PlayerModel(engine: engine2, downloader: downloader, defaults: defaults)
+        let loader = FakeTrackLoader(); for t in tracks { loader.tracks[t.url] = t }
+        loader.gated = true
+        let restoring = Task { await player2.restore(using: loader) }
+        await settle()
+        player2.play(queue: tracks, startingAt: 0)   // например, «Поделиться → Siply» на холодном старте
+        loader.release()
+        await restoring.value
+        XCTAssertEqual(player2.currentTrack, tracks[0])
+        XCTAssertTrue(player2.isPlaying)
+        XCTAssertEqual(engine2.loaded, [tracks[0].url])
+    }
 }
