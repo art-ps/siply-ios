@@ -5,6 +5,7 @@ struct NowPlayingSheet: View {
     @Environment(PlayerModel.self) private var player
     @State private var position: TimeInterval = 0
     @State private var isScrubbing = false
+    @State private var colors = ArtworkPalette.colors(from: nil)
 
     var body: some View {
         VStack(spacing: 24) {
@@ -63,8 +64,14 @@ struct NowPlayingSheet: View {
         .onChange(of: player.currentTime) { _, time in
             if !isScrubbing { position = time }
         }
+        .environment(\.colorScheme, .dark)
+        .task(id: player.currentTrack?.artwork) {
+            let data = player.currentTrack?.artwork
+            colors = await Task.detached { ArtworkPalette.colors(from: data) }.value
+        }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+        .presentationBackground { PlayerBackground(colors: colors) { player.level } }
     }
 
     private var sleepMenu: some View {
