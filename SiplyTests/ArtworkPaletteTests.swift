@@ -40,6 +40,16 @@ final class ArtworkPaletteTests: XCTestCase {
         }
     }
 
+    func testGrayArtworkUsesAccentHue() {
+        let colors = ArtworkPalette.colors(from: png(UIColor(white: 0.5, alpha: 1)))
+        XCTAssertEqual(colors.count, 9)
+        for c in colors {
+            let v = hsb(c)
+            XCTAssertEqual(v.h, accentHue, accuracy: 0.01)
+            XCTAssertTrue((0.18...0.45).contains(v.b), "brightness \(v.b)")
+        }
+    }
+
     func testGarbageDataSameAsNil() {
         XCTAssertEqual(ArtworkPalette.colors(from: Data([1, 2, 3])), ArtworkPalette.colors(from: nil))
     }

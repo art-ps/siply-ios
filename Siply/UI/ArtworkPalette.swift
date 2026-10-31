@@ -26,13 +26,21 @@ enum ArtworkPalette {
             var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0
             ui.getHue(&h, saturation: &s, brightness: &b, alpha: nil)
             // Приглушаем: фон не должен спорить с текстом поверх.
-            return Color(hue: h, saturation: max(s, 0.35), brightness: min(max(b, 0.18), 0.45))
+            // Ч/б пиксель (hue = 0) без этого стал бы красным — берём тон и насыщенность акцента.
+            let brightness = min(max(b, 0.18), 0.45)
+            if s < 0.1 { return Color(hue: accentHSB.h, saturation: accentHSB.s, brightness: brightness) }
+            return Color(hue: h, saturation: max(s, 0.35), brightness: brightness)
         }
     }
 
-    private static var fallback: [Color] {
+    private static var accentHSB: (h: CGFloat, s: CGFloat) {
         var h: CGFloat = 0, s: CGFloat = 0
         UIColor(accent).getHue(&h, saturation: &s, brightness: nil, alpha: nil)
+        return (h, s)
+    }
+
+    private static var fallback: [Color] {
+        let (h, s) = accentHSB
         return (0..<9).map { i in
             let row = CGFloat(i / 3), col = CGFloat(i % 3)
             var hue = (h + (col - 1) * 0.04).truncatingRemainder(dividingBy: 1)
