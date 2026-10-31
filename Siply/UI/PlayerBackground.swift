@@ -24,7 +24,8 @@ struct PlayerBackground: View {
     }
 
     var body: some View {
-        TimelineView(.animation(paused: reduceMotion)) { ctx in
+        // 30 fps хватает: дрейф 8–14 с, пульс сглажен; на 120 Гц жгло бы батарею.
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion)) { ctx in
             let t = reduceMotion ? 0 : ctx.date.timeIntervalSince(start)
             let s = reduceMotion ? 0 : smoother.push(level())
             MeshGradient(width: 3, height: 3,

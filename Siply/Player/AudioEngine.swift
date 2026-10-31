@@ -44,7 +44,10 @@ final class AVAudioPlayerEngine: NSObject, AudioEngine, AVAudioPlayerDelegate {
     }
 
     /// -60 дБ и тише → 0, 0 дБ → 1.
-    nonisolated static func normalized(db: Float) -> Float { min(max((db + 60) / 60, 0), 1) }
+    nonisolated static func normalized(db: Float) -> Float {
+        guard db.isFinite else { return 0 }
+        return min(max((db + 60) / 60, 0), 1)
+    }
 
     var onFinished: (@MainActor () -> Void)?
 

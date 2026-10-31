@@ -51,11 +51,12 @@ struct NowPlayingSheet: View {
             HStack {
                 Button(rateLabel) { player.cycleRate() }
                     .buttonStyle(.bordered)
+                    .tint(.white)
                     .font(.callout.monospacedDigit())
                     .accessibilityLabel("Скорость")
                     .accessibilityValue(rateLabel)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                RoutePicker().frame(width: 44, height: 44)
+                RoutePicker(tint: .white).frame(width: 44, height: 44)
                 sleepMenu.frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
@@ -67,7 +68,9 @@ struct NowPlayingSheet: View {
         .environment(\.colorScheme, .dark)
         .task(id: player.currentTrack?.artwork) {
             let data = player.currentTrack?.artwork
-            colors = await Task.detached { ArtworkPalette.colors(from: data) }.value
+            let palette = await Task.detached(priority: .userInitiated) { ArtworkPalette.colors(from: data) }.value
+            guard !Task.isCancelled else { return }
+            colors = palette
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)

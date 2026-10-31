@@ -37,6 +37,17 @@ final class AVAudioPlayerEngineTests: XCTestCase {
         XCTAssertEqual(AVAudioPlayerEngine.normalized(db: -30), 0.5, accuracy: 0.001)
         XCTAssertEqual(AVAudioPlayerEngine.normalized(db: -160), 0)
         XCTAssertEqual(AVAudioPlayerEngine.normalized(db: 10), 1)
+        XCTAssertEqual(AVAudioPlayerEngine.normalized(db: .nan), 0)
+        XCTAssertEqual(AVAudioPlayerEngine.normalized(db: -.infinity), 0)
+    }
+
+    @MainActor func testLevelZeroWhenLoadedButPaused() throws {
+        let tmp = TempDir()
+        let url = tmp.url.appendingPathComponent("s.wav")
+        try AudioFixtures.writeWav(to: url)
+        let engine = AVAudioPlayerEngine()
+        try engine.load(url)
+        XCTAssertEqual(engine.level, 0)
     }
 
     func testLevelZeroWithoutPlayer() {
