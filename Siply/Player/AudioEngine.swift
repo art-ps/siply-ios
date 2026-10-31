@@ -9,6 +9,8 @@ protocol AudioEngine: AnyObject {
     /// Чтение — позиция, запись — перемотка.
     var currentTime: TimeInterval { get set }
     var duration: TimeInterval { get }
+    /// Громкость сейчас, 0…1; 0 без трека или на паузе.
+    var level: Float { get }
     /// Вызывается на главном акторе, когда трек доиграл до конца.
     var onFinished: (@MainActor () -> Void)? { get set }
     func load(_ url: URL) throws
@@ -35,6 +37,15 @@ final class AVAudioPlayerEngine: NSObject, AudioEngine, AVAudioPlayerDelegate {
 
     var duration: TimeInterval { player?.duration ?? 0 }
 
+    var level: Float {
+        guard let p = player, p.isPlaying else { return 0 }
+        p.updateMeters()
+        return Self.normalized(db: p.averagePower(forChannel: 0))
+    }
+
+    /// -60 дБ и тише → 0, 0 дБ → 1.
+    nonisolated static func normalized(db: Float) -> Float { min(max((db + 60) / 60, 0), 1) }
+
     var onFinished: (@MainActor () -> Void)?
 
     func load(_ url: URL) throws {
@@ -45,6 +56,7 @@ final class AVAudioPlayerEngine: NSObject, AudioEngine, AVAudioPlayerDelegate {
         p.volume = volume
         // enableRate надо включить до prepareToPlay, иначе rate игнорируется.
         p.enableRate = true
+        p.isMeteringEnabled = true
         p.rate = rate
         p.prepareToPlay()
         player = p

@@ -545,4 +545,17 @@ final class PlayerModelTests: XCTestCase {
         XCTAssertEqual(player.queue[0].download, .local)
         XCTAssertTrue(player.isPlaying)
     }
+
+    func testLevelZeroWhenPaused() {
+        engine.level = 0.7
+        player.play(queue: tracks, startingAt: 0)
+        player.togglePlayPause()
+        XCTAssertEqual(player.level, 0)
+    }
+
+    func testLevelPassesThroughWhenPlaying() {
+        engine.level = 0.7
+        player.play(queue: tracks, startingAt: 0)
+        XCTAssertEqual(player.level, 0.7)
+    }
 }

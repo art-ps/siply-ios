@@ -29,4 +29,17 @@ final class AVAudioPlayerEngineTests: XCTestCase {
         try engine.load(url)
         XCTAssertEqual(engine.volume, 0.25)
     }
+
+    // Чистая функция, не требует главного актора.
+    nonisolated func testNormalizedDb() {
+        XCTAssertEqual(AVAudioPlayerEngine.normalized(db: -60), 0)
+        XCTAssertEqual(AVAudioPlayerEngine.normalized(db: 0), 1)
+        XCTAssertEqual(AVAudioPlayerEngine.normalized(db: -30), 0.5, accuracy: 0.001)
+        XCTAssertEqual(AVAudioPlayerEngine.normalized(db: -160), 0)
+        XCTAssertEqual(AVAudioPlayerEngine.normalized(db: 10), 1)
+    }
+
+    func testLevelZeroWithoutPlayer() {
+        XCTAssertEqual(AVAudioPlayerEngine().level, 0)
+    }
 }
