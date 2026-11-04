@@ -19,7 +19,7 @@ targets:
       properties:
         CFBundleDisplayName: Siply
         CFBundleShortVersionString: "0.1.1"
-        CFBundleVersion: "2"
+        CFBundleVersion: "5"
         UIBackgroundModes: [audio]
         UIFileSharingEnabled: true
         ITSAppUsesNonExemptEncryption: false
