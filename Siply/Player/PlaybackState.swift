@@ -23,12 +23,14 @@ struct FileTrackLoader: TrackLoader {
         if !isCloud, !url.resolvingSymlinksInPath().path.hasPrefix(appFolder.resolvingSymlinksInPath().path + "/") {
             var t = Track(url: url)
             t.download = .onDemand
+            t.artwork = LibraryScanner.coverFile(in: url.deletingLastPathComponent())
             return t
         }
         // Не скачанный — серая строка без чтения тегов: файла на диске нет.
         if DownloadState.of(url) == .remote {
             var t = Track(url: url)
             t.download = .remote
+            t.artwork = LibraryScanner.coverFile(in: url.deletingLastPathComponent())
             return t
         }
         return await LibraryScanner.loadTrack(url)

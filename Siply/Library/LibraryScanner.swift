@@ -59,6 +59,8 @@ enum LibraryScanner {
         let nums = await numbers(from: asset)
         if let n = nums.track { track.trackNumber = n }
         if let d = nums.disc { track.discNumber = d }
+        // Своей картинки нет — обложка папки.
+        if track.artwork == nil { track.artwork = coverFile(in: url.deletingLastPathComponent()) }
         return track
     }
 
@@ -100,6 +102,7 @@ enum LibraryScanner {
     /// чтобы провайдер не качал файлы целиком.
     static func tracks(in folder: URL, tagsOnDemand: Bool = false) async -> [Track] {
         let urls = audioFiles(in: folder)
+        let cover = coverFile(in: folder)
         let loaded = await withTaskGroup(of: Track?.self) { group in
             for url in urls {
                 group.addTask {
@@ -107,11 +110,13 @@ enum LibraryScanner {
                     if state == .remote {
                         var track = Track(url: url)
                         track.download = .remote
+                        track.artwork = cover
                         return track
                     }
                     if tagsOnDemand {
                         var track = Track(url: url)
                         track.download = .onDemand
+                        track.artwork = cover
                         return track
                     }
                     return await isPlayable(url) ? await loadTrack(url) : nil
@@ -127,11 +132,16 @@ enum LibraryScanner {
     /// Обложка папки: первый трек с artwork, иначе cover.jpg / cover.png / folder.jpg.
     static func folderArtwork(for folder: URL, tracks: [Track]) -> Data? {
         if let data = tracks.lazy.compactMap(\.artwork).first { return data }
+        return coverFile(in: folder)
+    }
+
+    /// Файл обложки в папке: cover.jpg / cover.png / folder.jpg, первый найденный.
+    static func coverFile(in folder: URL) -> Data? {
         for name in ["cover.jpg", "cover.png", "folder.jpg"] {
             let file = folder.appendingPathComponent(name)
             // Не скачанная обложка в iCloud: Data(contentsOf:) ждал бы загрузку, вися на главном потоке.
             guard DownloadState.of(file) == .local else { continue }
-            if let data = try? Data(contentsOf: file) { return data }
+            if let data = try? Data(contentsOf: file, options: .mappedIfSafe) { return data }
         }
         return nil
     }

@@ -101,4 +101,39 @@ final class LibraryScannerTests: XCTestCase {
         XCTAssertEqual(LibraryScanner.folderArtwork(for: tmp.url, tracks: [plain]), cover)
         XCTAssertNil(LibraryScanner.folderArtwork(for: TempDir().url, tracks: [plain]))
     }
+
+    func testLoadTrackWithoutArtUsesCoverFile() async throws {
+        let tmp = TempDir()
+        let wav = tmp.url.appendingPathComponent("01 A.wav")
+        try AudioFixtures.writeWav(to: wav)
+        tmp.file("cover.jpg", Data([1, 2, 3]))
+        let t = await LibraryScanner.loadTrack(wav)
+        XCTAssertEqual(t.artwork, Data([1, 2, 3]))
+    }
+
+    func testLoadTrackWithoutArtAndCoverIsNil() async throws {
+        let tmp = TempDir()
+        let wav = tmp.url.appendingPathComponent("01 A.wav")
+        try AudioFixtures.writeWav(to: wav)
+        let t = await LibraryScanner.loadTrack(wav)
+        XCTAssertNil(t.artwork)
+    }
+
+    func testCoverFileOrder() {
+        let tmp = TempDir()
+        tmp.file("folder.jpg", Data([9]))
+        tmp.file("cover.png", Data([2]))
+        XCTAssertEqual(LibraryScanner.coverFile(in: tmp.url), Data([2]))
+        XCTAssertNil(LibraryScanner.coverFile(in: TempDir().url))
+    }
+
+    func testOnDemandPlaceholdersGetCover() async throws {
+        let tmp = TempDir()
+        try AudioFixtures.writeWav(to: tmp.url.appendingPathComponent("01 A.wav"))
+        try AudioFixtures.writeWav(to: tmp.url.appendingPathComponent("02 B.wav"))
+        tmp.file("cover.jpg", Data([7, 7]))
+        let tracks = await LibraryScanner.tracks(in: tmp.url, tagsOnDemand: true)
+        XCTAssertEqual(tracks.count, 2)
+        XCTAssertTrue(tracks.allSatisfy { $0.artwork == Data([7, 7]) && $0.duration == 0 })
+    }
 }

@@ -24,4 +24,13 @@ final class FileTrackLoaderTests: XCTestCase {
         let t = await FileTrackLoader(appFolder: app.url).track(at: app.url.appendingPathComponent("nope.mp3"))
         XCTAssertNil(t)
     }
+
+    func testOnDemandPlaceholderGetsCover() async {
+        let app = TempDir(), other = TempDir()
+        let file = other.file("03 Глава.mp3", Data("garbage".utf8))
+        other.file("cover.jpg", Data([5]))
+        let t = await FileTrackLoader(appFolder: app.url).track(at: file)
+        XCTAssertEqual(t?.download, .onDemand)
+        XCTAssertEqual(t?.artwork, Data([5]))
+    }
 }
