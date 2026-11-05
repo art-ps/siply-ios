@@ -20,8 +20,9 @@ Siply — простой плеер для музыки, которая лежи
 
 **Ключевые слова (≤100):** flac,плеер,музыка,папки,mp3,lossless,аудиокниги,офлайн,файлы,icloud,smb,player,music
 
-## Card (EN)
+## Card (EN, основной язык)
 
+**Name:** Siply Simple Player (просто «Siply» и «Siply - Simple Player» в en-US заняты)
 **Subtitle:** Music straight from folders
 
 **Description:**
@@ -30,14 +31,14 @@ Siply is a simple player for music that lives in folders. Open a folder and list
 
 • Folders, not a library. Add any folder from Files: iCloud Drive, On My iPhone, a USB drive, an SMB server or a cloud drive. Siply shows it as it is.
 • Plays everything iPhone plays: MP3, AAC/M4A, FLAC, WAV, AIFF and CAF, lossless included.
-• Tags and artwork. Titles, artists and covers come from the tags.
+• Tags and artwork. Titles, artists and covers come from the tags. No cover in the file? Siply uses the folder's cover.jpg.
 • iCloud without wasted space. Tracks that aren't downloaded yet are fetched before they play; remove downloads with one swipe.
 • Plays in the background and on the Lock Screen, with AirPods, headphones and AirPlay.
 • Playback speed and sleep timer for audiobooks and lectures. Siply remembers where you stopped.
 • A live player background shifts with the album colours and pulses with the music.
 • Small and native: Swift and SwiftUI. No ads, no accounts, no data collection. Open source.
 
-**Keywords:** flac,music,player,folders,mp3,lossless,audiobooks,offline,files,icloud,smb
+**Keywords:** flac,music,player,folders,mp3,lossless,audiobooks,offline,files,icloud,smb,audio,album,cover
 
 ## Прочее
 
